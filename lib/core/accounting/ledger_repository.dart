@@ -23,6 +23,36 @@ class LedgerRepository {
     String? description,
     DateTime? date,
   }) async {
+    return db.transaction((txn) => postWithin(
+          txn,
+          businessId: businessId,
+          sourceType: sourceType,
+          sourceId: sourceId,
+          createdBy: createdBy,
+          deviceId: deviceId,
+          rawLines: rawLines,
+          description: description,
+          date: date,
+        ));
+  }
+
+  /// Same as [post], but runs against an already-open [DatabaseExecutor]
+  /// (i.e. inside someone else's `db.transaction`). Use this from
+  /// composed flows — e.g. Sale posting both a JournalEntry and a
+  /// StockMovement — so both writes commit or roll back together.
+  /// sqflite doesn't support nested transactions, which is why this can't
+  /// just call [post] internally.
+  Future<JournalEntry> postWithin(
+    DatabaseExecutor txn, {
+    required String businessId,
+    required String sourceType,
+    required String sourceId,
+    required String createdBy,
+    required String deviceId,
+    required List<JournalLine> rawLines,
+    String? description,
+    DateTime? date,
+  }) async {
     final uuid = _uuid.v4();
     final lines = rawLines
         .map((l) => JournalLine(
@@ -55,12 +85,10 @@ class LedgerRepository {
       );
     }
 
-    await db.transaction((txn) async {
-      await txn.insert(JournalEntry.tableName, entry.toMap());
-      for (final line in lines) {
-        await txn.insert(JournalLine.tableName, line.toMap());
-      }
-    });
+    await txn.insert(JournalEntry.tableName, entry.toMap());
+    for (final line in lines) {
+      await txn.insert(JournalLine.tableName, line.toMap());
+    }
 
     return entry;
   }

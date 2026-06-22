@@ -1,0 +1,91 @@
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:sqflite/sqflite.dart';
+import 'package:uuid/uuid.dart';
+
+import '../accounting/chart_of_accounts_seed.dart';
+import '../accounting/ledger_repository.dart';
+import '../party/party_repository.dart';
+import '../tenant/business.dart';
+import '../transaction/payment_repository.dart';
+import '../../features/spare_parts/inventory/product_repository.dart';
+import '../../features/spare_parts/purchases/purchase_repository.dart';
+import '../../features/spare_parts/sales/sale_repository.dart';
+import 'database.dart';
+import 'number_sequence_service.dart';
+
+const _uuid = Uuid();
+
+/// Single demo business + single device/user identity for Phase 1. Real
+/// multi-business switching and auth land in Phase 5 (see PHASES.md) —
+/// until then, the app boots straight into one seeded business so the
+/// transactional screens are usable end-to-end.
+final databaseProvider = FutureProvider<Database>((ref) async {
+  final db = await AppDatabase.open();
+  return db;
+});
+
+final currentBusinessIdProvider = FutureProvider<String>((ref) async {
+  final db = await ref.watch(databaseProvider.future);
+  final rows = await db.query(Business.tableName, limit: 1);
+  if (rows.isNotEmpty) {
+    return rows.first['uuid'] as String;
+  }
+
+  final now = DateTime.now();
+  final business = Business(
+    uuid: _uuid.v4(),
+    name: 'My Spare Parts Shop',
+    type: BusinessType.sparePartsShop,
+    createdAt: now,
+    updatedAt: now,
+  );
+  await db.insert(Business.tableName, business.toMap());
+  await seedChartOfAccounts(db, business.uuid);
+  return business.uuid;
+});
+
+const currentUser = 'owner';
+const currentDeviceId = 'desktop-1';
+
+final ledgerRepositoryProvider = FutureProvider<LedgerRepository>((ref) async {
+  final db = await ref.watch(databaseProvider.future);
+  return LedgerRepository(db);
+});
+
+final productRepositoryProvider = FutureProvider<ProductRepository>((ref) async {
+  final db = await ref.watch(databaseProvider.future);
+  return ProductRepository(db);
+});
+
+final partyRepositoryProvider = FutureProvider<PartyRepository>((ref) async {
+  final db = await ref.watch(databaseProvider.future);
+  return PartyRepository(db);
+});
+
+final numberSequenceServiceProvider = FutureProvider<NumberSequenceService>((ref) async {
+  final db = await ref.watch(databaseProvider.future);
+  return NumberSequenceService(db);
+});
+
+final purchaseRepositoryProvider = FutureProvider<PurchaseRepository>((ref) async {
+  final db = await ref.watch(databaseProvider.future);
+  final ledger = await ref.watch(ledgerRepositoryProvider.future);
+  final products = await ref.watch(productRepositoryProvider.future);
+  final numbering = await ref.watch(numberSequenceServiceProvider.future);
+  return PurchaseRepository(db, ledger, products, numbering);
+});
+
+final saleRepositoryProvider = FutureProvider<SaleRepository>((ref) async {
+  final db = await ref.watch(databaseProvider.future);
+  final ledger = await ref.watch(ledgerRepositoryProvider.future);
+  final products = await ref.watch(productRepositoryProvider.future);
+  final numbering = await ref.watch(numberSequenceServiceProvider.future);
+  return SaleRepository(db, ledger, products, numbering);
+});
+
+final paymentRepositoryProvider = FutureProvider<PaymentRepository>((ref) async {
+  final db = await ref.watch(databaseProvider.future);
+  final ledger = await ref.watch(ledgerRepositoryProvider.future);
+  final numbering = await ref.watch(numberSequenceServiceProvider.future);
+  return PaymentRepository(db, ledger, numbering);
+});

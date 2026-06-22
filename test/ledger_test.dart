@@ -3,11 +3,10 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
-import 'package:business_erp/core/accounting/account.dart';
 import 'package:business_erp/core/accounting/chart_of_accounts_seed.dart';
 import 'package:business_erp/core/accounting/journal_entry.dart';
 import 'package:business_erp/core/accounting/ledger_repository.dart';
-import 'package:business_erp/core/tenant/business.dart';
+import 'package:business_erp/core/system/database.dart';
 
 void main() {
   late Database db;
@@ -25,17 +24,7 @@ void main() {
       '${tempDir.path}/test.db',
       options: OpenDatabaseOptions(
         version: 1,
-        onCreate: (db, version) async {
-          await db.execute(Business.createTableSql);
-          await db.execute(Account.createTableSql);
-          await db.execute(Account.createIndexSql);
-          await db.execute(JournalEntry.createTableSql);
-          await db.execute(JournalEntry.createIndexSql);
-          await db.execute(JournalEntry.createStatusIndexSql);
-          await db.execute(JournalLine.createTableSql);
-          await db.execute(JournalLine.createIndexSql);
-          await db.execute(JournalLine.createEntryIndexSql);
-        },
+        onCreate: (db, version) => createSchema(db),
       ),
     );
     await seedChartOfAccounts(db, businessId);

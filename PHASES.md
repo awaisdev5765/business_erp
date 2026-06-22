@@ -26,17 +26,23 @@ Isar's NoSQL query API. Desktop (Windows/macOS/Linux) and `flutter test`
 use the FFI database factory; Android/iOS use the native sqflite channel
 automatically (see `lib/core/system/database.dart`).
 
-## Phase 1 — Spare Parts vertical, full loop (next)
-- [ ] `Party` model (unified Customer/Supplier) + repository
-- [ ] Document numbering service (per-business sequential, provisional-until-sync pattern)
-- [ ] Products / Categories / Brands + single-warehouse inventory
-- [ ] Purchases → posts Dr Inventory / Cr Payable
-- [ ] Sales (fast keyboard-entry screen) → posts Dr Cash-or-Receivable / Cr Sales Income (+ Tax Payable once Tax Engine lands)
-- [ ] Payments In/Out → settles Receivable/Payable
-- [ ] Customer Ledger / Supplier Ledger screens (filtered view over `journal_lines`)
-- [ ] Cash Book screen
+## Phase 1 — Spare Parts vertical, full loop (DONE except reporting/PDF)
+- [x] `Party` model (unified Customer/Supplier) + repository
+- [x] Document numbering service (per-business sequential; local-only counter for now — see note)
+- [x] Products / Categories / Brands + single-warehouse inventory + StockMovement audit trail
+- [x] Purchases → posts Dr Inventory(1040) / Cr Accounts Payable(2010), tagged to supplier
+- [x] Sales (cart-style entry screen) → posts Dr Cash(1010)-or-Receivable(1030) / Cr Sales Income(4010) **and** Dr COGS(5010) / Cr Inventory(1040) in one balanced entry
+- [x] Payments In/Out → settles Receivable/Payable (reachable from the Party Ledger screen)
+- [x] Customer Ledger / Supplier Ledger screen (statement of account, filtered view over `journal_lines`)
+- [x] Minimal desktop UI shell (NavigationRail: Dashboard, Sales, Purchases, Products, Customers, Suppliers)
+- [x] Tests: purchase restocks + posts payable; credit sale decrements stock + posts revenue/COGS/receivable; insufficient-stock rejection
+- [ ] Cash Book screen (dedicated view — balance is already queryable via `accountBalanceMinorUnits('1010')`, used on Dashboard)
 - [ ] Trial Balance + basic P&L report
 - [ ] PDF invoice export
+
+**Numbering note:** `NumberSequenceService` issues `LOCAL-<TYPE>-NNNNNN` numbers from a local SQLite counter — correct and gapless for a single device, but not yet the server-confirmed gapless number described in PHASES.md Section 14. That Cloud Function swap is Phase 5 work.
+
+**Known gap:** app boots into one auto-seeded business ("My Spare Parts Shop") with a hardcoded `currentUser`/`currentDeviceId` — there's no login, business switcher, or role enforcement yet. That's Identity/Multi-tenant UI work, deferred to Phase 5 alongside Firebase Auth.
 
 ## Phase 2 — Accounting hardening
 - [ ] Fiscal Periods (Open/Closed/Locked) + period-close enforcement

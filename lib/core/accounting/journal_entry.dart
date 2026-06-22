@@ -39,7 +39,7 @@ class JournalLine {
       credit_minor_units INTEGER NOT NULL DEFAULT 0,
       party_uuid TEXT,
       dimension_uuid TEXT,
-      FOREIGN KEY (entry_uuid) REFERENCES ${_journalEntryTable}(uuid)
+      FOREIGN KEY (entry_uuid) REFERENCES $_journalEntryTable(uuid)
     )
   ''';
 
@@ -50,6 +50,9 @@ class JournalLine {
 
   static const createEntryIndexSql =
       'CREATE INDEX idx_journal_lines_entry ON $tableName (entry_uuid)';
+
+  static const createPartyIndexSql =
+      'CREATE INDEX idx_journal_lines_party ON $tableName (party_uuid)';
 
   Map<String, Object?> toMap() => {
         'entry_uuid': entryUuid,
