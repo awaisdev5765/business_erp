@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/party/party.dart';
 import '../../../core/system/providers.dart';
 import '../inventory/product.dart';
+import 'invoice_pdf.dart';
 import 'sale.dart';
 import 'sale_repository.dart';
 
@@ -83,7 +84,7 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
     try {
       final businessId = await ref.read(currentBusinessIdProvider.future);
       final repo = await ref.read(saleRepositoryProvider.future);
-      await repo.create(
+      final sale = await repo.create(
         businessId: businessId,
         customerUuid: _selectedCustomer?.uuid,
         paymentMethod: _paymentMethod,
@@ -97,8 +98,23 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
                 ))
             .toList(),
       );
+
+      final productsByUuid = {for (final l in _cart) l.product.uuid: l.product};
+      final savedCustomer = _selectedCustomer;
+
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Sale saved')));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: const Text('Sale saved'),
+          action: SnackBarAction(
+            label: 'PRINT INVOICE',
+            onPressed: () => InvoicePdf.printInvoice(
+              sale: sale,
+              businessName: 'My Spare Parts Shop',
+              customer: savedCustomer,
+              productsByUuid: productsByUuid,
+            ),
+          ),
+        ));
         setState(() {
           _cart.clear();
           _selectedCustomer = null;

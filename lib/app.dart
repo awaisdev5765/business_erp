@@ -4,6 +4,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'core/party/party.dart';
 import 'core/party/party_list_screen.dart';
 import 'core/system/providers.dart';
+import 'features/accounting/cash_book_screen.dart';
+import 'features/accounting/profit_and_loss_screen.dart';
+import 'features/accounting/trial_balance_screen.dart';
 import 'features/dashboard/dashboard_screen.dart';
 import 'features/spare_parts/inventory/product_list_screen.dart';
 import 'features/spare_parts/purchases/purchase_entry_screen.dart';
@@ -42,6 +45,9 @@ class _AppShellState extends ConsumerState<_AppShell> {
     (icon: Icons.inventory_2_outlined, label: 'Products'),
     (icon: Icons.people_outline, label: 'Customers'),
     (icon: Icons.local_shipping_outlined, label: 'Suppliers'),
+    (icon: Icons.account_balance_wallet_outlined, label: 'Cash Book'),
+    (icon: Icons.balance_outlined, label: 'Trial Balance'),
+    (icon: Icons.trending_up_outlined, label: 'P&L'),
   ];
 
   Widget _buildBody() {
@@ -58,6 +64,12 @@ class _AppShellState extends ConsumerState<_AppShell> {
         return const PartyListScreen(type: PartyType.customer);
       case 5:
         return const PartyListScreen(type: PartyType.supplier);
+      case 6:
+        return const CashBookScreen();
+      case 7:
+        return const TrialBalanceScreen();
+      case 8:
+        return const ProfitAndLossScreen();
       default:
         return const DashboardScreen();
     }

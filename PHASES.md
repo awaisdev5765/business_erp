@@ -26,7 +26,7 @@ Isar's NoSQL query API. Desktop (Windows/macOS/Linux) and `flutter test`
 use the FFI database factory; Android/iOS use the native sqflite channel
 automatically (see `lib/core/system/database.dart`).
 
-## Phase 1 — Spare Parts vertical, full loop (DONE except reporting/PDF)
+## Phase 1 — Spare Parts vertical, full loop (DONE)
 - [x] `Party` model (unified Customer/Supplier) + repository
 - [x] Document numbering service (per-business sequential; local-only counter for now — see note)
 - [x] Products / Categories / Brands + single-warehouse inventory + StockMovement audit trail
@@ -34,11 +34,16 @@ automatically (see `lib/core/system/database.dart`).
 - [x] Sales (cart-style entry screen) → posts Dr Cash(1010)-or-Receivable(1030) / Cr Sales Income(4010) **and** Dr COGS(5010) / Cr Inventory(1040) in one balanced entry
 - [x] Payments In/Out → settles Receivable/Payable (reachable from the Party Ledger screen)
 - [x] Customer Ledger / Supplier Ledger screen (statement of account, filtered view over `journal_lines`)
-- [x] Minimal desktop UI shell (NavigationRail: Dashboard, Sales, Purchases, Products, Customers, Suppliers)
-- [x] Tests: purchase restocks + posts payable; credit sale decrements stock + posts revenue/COGS/receivable; insufficient-stock rejection
-- [ ] Cash Book screen (dedicated view — balance is already queryable via `accountBalanceMinorUnits('1010')`, used on Dashboard)
-- [ ] Trial Balance + basic P&L report
-- [ ] PDF invoice export
+- [x] Cash Book screen (same statement pattern, filtered by account 1010 instead of party)
+- [x] Trial Balance report (`LedgerRepository.trialBalance()` — one grouped SQL query, all accounts' Dr/Cr/balance)
+- [x] Basic P&L report (income earned minus expense spent, derived from trialBalance rows)
+- [x] PDF invoice export (`pdf`/`printing` packages — client-side for now; see note)
+- [x] Minimal desktop UI shell (NavigationRail: Dashboard, Sales, Purchases, Products, Customers, Suppliers, Cash Book, Trial Balance, P&L)
+- [x] Tests: purchase restocks + posts payable; credit sale decrements stock + posts revenue/COGS/receivable; insufficient-stock rejection; trial balance and account balance are business-scoped even when two businesses share an account code
+
+**Multi-tenant bug caught and fixed during Phase 1:** the first draft of `trialBalance()` joined `journal_lines` to `accounts` on `account_code` alone. Account codes are only unique *within* a business, so that join could pull another business's lines for the same code (e.g. two businesses both have "1010"). Fixed by joining through business-scoped `journal_entries` first. Covered by `test/reports_test.dart` — this is exactly the class of bug PHASES.md Section 16 warns about ("multi-tenant isolation has to hold at the query level, not just the UI level").
+
+**PDF export note:** invoice rendering runs client-side via the `pdf`/`printing` packages. PHASES.md Section 17 calls for this to eventually run through a shared Cloud Function template so Desktop/Web/Mobile render identically — that's deferred to Phase 5 alongside the rest of the Firebase wiring.
 
 **Numbering note:** `NumberSequenceService` issues `LOCAL-<TYPE>-NNNNNN` numbers from a local SQLite counter — correct and gapless for a single device, but not yet the server-confirmed gapless number described in PHASES.md Section 14. That Cloud Function swap is Phase 5 work.
 

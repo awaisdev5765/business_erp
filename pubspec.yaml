@@ -43,6 +43,10 @@ dependencies:
   path_provider: ^2.1.5
   path: ^1.9.1
 
+  # PDF invoice export (Section 17 — Reporting Architecture)
+  pdf: ^3.11.3
+  printing: ^5.13.4
+
   # State management
   flutter_riverpod: ^2.6.1
 

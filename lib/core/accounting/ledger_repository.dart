@@ -1,6 +1,7 @@
 import 'package:sqflite/sqflite.dart';
 import 'package:uuid/uuid.dart';
 
+import 'account.dart';
 import 'journal_entry.dart';
 
 const _uuid = Uuid();
@@ -185,5 +186,52 @@ class LedgerRepository {
     final debit = row['total_debit'] as int;
     final credit = row['total_credit'] as int;
     return debit - credit;
+  }
+
+  /// Every JournalLine posted to one account, chronological — the Cash
+  /// Book is this query against account "1010", same pattern as
+  /// PartyRepository.statementOfAccount(). See PHASES.md Section 11.
+  Future<List<Map<String, Object?>>> accountStatement({
+    required String businessId,
+    required String accountCode,
+  }) async {
+    return db.rawQuery('''
+      SELECT je.date, je.source_type, je.source_id, je.description, je.status,
+             jl.debit_minor_units, jl.credit_minor_units
+      FROM ${JournalLine.tableName} jl
+      INNER JOIN ${JournalEntry.tableName} je ON je.uuid = jl.entry_uuid
+      WHERE je.business_id = ?
+        AND je.status != ?
+        AND jl.account_code = ?
+      ORDER BY je.date ASC
+    ''', [businessId, JournalEntryStatus.void_.name, accountCode]);
+  }
+
+  /// Trial Balance: every account's Dr/Cr totals and net balance, in one
+  /// grouped query — the SQL aggregation Isar couldn't do cleanly (this is
+  /// the concrete payoff of the sqflite switch documented in PHASES.md
+  /// Phase 0).
+  ///
+  /// Joins journal_entries (business-scoped) before journal_lines, rather
+  /// than joining lines on account_code directly — account codes are only
+  /// unique *within* a business (UNIQUE(business_id, code)), so joining
+  /// lines straight to accounts on code alone would pull in another
+  /// business's lines if they happened to share a code (e.g. both have a
+  /// "1010" account). Multi-tenant isolation has to hold at the query
+  /// level, not just the UI level — see PHASES.md Section 16.
+  Future<List<Map<String, Object?>>> trialBalance({required String businessId}) async {
+    return db.rawQuery('''
+      SELECT a.code, a.name, a.type,
+             COALESCE(SUM(jl.debit_minor_units), 0) AS total_debit,
+             COALESCE(SUM(jl.credit_minor_units), 0) AS total_credit
+      FROM ${Account.tableName} a
+      LEFT JOIN ${JournalEntry.tableName} je
+        ON je.business_id = a.business_id AND je.status != ?
+      LEFT JOIN ${JournalLine.tableName} jl
+        ON jl.entry_uuid = je.uuid AND jl.account_code = a.code
+      WHERE a.business_id = ?
+      GROUP BY a.code, a.name, a.type
+      ORDER BY a.code ASC
+    ''', [JournalEntryStatus.void_.name, businessId]);
   }
 }
