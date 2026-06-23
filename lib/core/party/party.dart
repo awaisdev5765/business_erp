@@ -1,4 +1,4 @@
-enum PartyType { customer, supplier }
+enum PartyType { customer, supplier, captain, crew, driver }
 
 /// A Customer and a Supplier are both "a counterparty with a ledger" — same
 /// fields, different `type` and default account mapping. Unifying them

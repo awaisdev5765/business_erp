@@ -61,13 +61,17 @@ automatically (see `lib/core/system/database.dart`).
 
 **Sandbox note:** `flutter test`/`flutter pub get` can hang indefinitely in network-sandboxed shells because the transitive `sqlite3` package now builds its native library from source via a Dart "hooks" build step on first run, instead of shipping a prebuilt binary — that build step needs network access it doesn't get by default in this environment. Symptom: a `dart ... hook.dill` process sitting at the same elapsed time with zero test output. Fix: run with the sandbox disabled for that one command.
 
-## Phase 3 — Fishery vertical
-- [ ] `OperatingAsset` (Boats) — reuses the same abstract entity as Vehicles later
-- [ ] Captains/Crew
-- [ ] Trip (fishery type) — Trip Planning, Trip Execution
-- [ ] Trip Expenses (Fuel/Ice/Food/Maintenance) → posts to expense accounts + Boat dimension
-- [ ] Catch Tracking + Fish Sales
-- [ ] Boat Ledger, Trip Profit Report
+## Phase 3 — Fishery vertical (DONE)
+- [x] `OperatingAsset` (Boats) — unified entity (`type: boat`), reused as-is for Vehicles in Phase 4 (just a new enum value, no new table)
+- [x] Captains/Crew — reused `Party` (`type: captain/crew`), no new table; no ledger/payment actions on the Crew screen since salary tracking is a later Payroll phase, not Phase 3
+- [x] Trip (`tripType: fishery`) — Planning (create, status `planned`) → Execution (`start()` → `inProgress`, `complete()` → `completed` + `endDate`)
+- [x] Trip Expenses (Fuel 5020/Ice 5040/Food 5045/Maintenance 5030) → Dr expense account / Cr Cash(1010), both lines tagged `dimensionUuid = boat.uuid`
+- [x] Catch Tracking (`CatchEntry` — no accounting posting, just pre-sale inventory-of-catch) + Fish Sales (`FishSale` → Dr Cash/Receivable / Cr Trip-Catch Income(4020), tagged to the boat dimension and, for credit sales, the customer party). No COGS posting for fish sales — the catch's cost was already expensed via TripExpense, so Trip Profit is revenue minus expenses directly, not a per-unit cost calc.
+- [x] Boat Ledger (`LedgerRepository.dimensionStatement()` — new query, every journal line tagged with one dimension across *all* accounts, the dimension-axis counterpart to `accountStatement()`'s account-axis view) + Trip Profit Report (`TripProfitService` — `FishSaleRepository.totalForTrip()` minus `TripExpenseRepository.totalForTrip()`)
+- [x] UI: Boats list, Crew list, Trips list + Trip Detail (status actions, expense/catch/fish-sale entry inline, live profit summary), Boat Ledger — all wired into the same NavigationRail as Spare Parts (see "Known gap" below)
+- [x] Tests: full trip lifecycle (plan→start→expense→catch→sell→complete) verifying Boat Ledger shows every account touched and Trip Profit nets correctly; credit-fish-sale-without-customer rejection
+
+**Known gap carried over:** the NavigationRail now lists Spare Parts and Fishery screens side by side with no business-type-aware filtering — there's no concept yet of "this nav item only shows for a Fishery business." That's deferred to Phase 5/Identity work alongside the business switcher itself (see Phase 1's "Known gap" note).
 
 ## Phase 4 — Transport vertical
 - [ ] `OperatingAsset` (Vehicles)

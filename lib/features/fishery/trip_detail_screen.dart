@@ -1,0 +1,406 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../../core/activity/trip.dart';
+import '../../core/party/party.dart';
+import '../../core/system/providers.dart';
+import 'fish_category.dart';
+import 'fish_sale.dart';
+import 'trip_expense.dart';
+import 'trip_profit_service.dart';
+
+class TripDetailScreen extends ConsumerStatefulWidget {
+  const TripDetailScreen({super.key, required this.trip});
+
+  final Trip trip;
+
+  @override
+  ConsumerState<TripDetailScreen> createState() => _TripDetailScreenState();
+}
+
+class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
+  late Trip _trip;
+  List<TripExpense>? _expenses;
+  List<CatchEntry>? _catches;
+  List<FishSale>? _sales;
+  Map<String, FishCategory> _categoriesByUuid = {};
+  TripProfit? _profit;
+
+  @override
+  void initState() {
+    super.initState();
+    _trip = widget.trip;
+    _load();
+  }
+
+  Future<void> _load() async {
+    final tripRepo = await ref.read(tripRepositoryProvider.future);
+    final expenseRepo = await ref.read(tripExpenseRepositoryProvider.future);
+    final catchRepo = await ref.read(catchRepositoryProvider.future);
+    final fishSaleRepo = await ref.read(fishSaleRepositoryProvider.future);
+    final categoryRepo = await ref.read(fishCategoryRepositoryProvider.future);
+    final profitService = await ref.read(tripProfitServiceProvider.future);
+    final businessId = await ref.read(currentBusinessIdProvider.future);
+
+    final reloaded = await tripRepo.findByUuid(_trip.uuid);
+    final expenses = await expenseRepo.listByTrip(_trip.uuid);
+    final catches = await catchRepo.listByTrip(_trip.uuid);
+    final sales = await fishSaleRepo.listByTrip(_trip.uuid);
+    final categories = await categoryRepo.list(businessId: businessId);
+    final profit = await profitService.forTrip(_trip.uuid);
+
+    if (mounted) {
+      setState(() {
+        _trip = reloaded ?? _trip;
+        _expenses = expenses;
+        _catches = catches;
+        _sales = sales;
+        _categoriesByUuid = {for (final c in categories) c.uuid: c};
+        _profit = profit;
+      });
+    }
+  }
+
+  Future<void> _startTrip() async {
+    final repo = await ref.read(tripRepositoryProvider.future);
+    await repo.start(_trip.uuid);
+    await _load();
+  }
+
+  Future<void> _completeTrip() async {
+    final repo = await ref.read(tripRepositoryProvider.future);
+    await repo.complete(_trip.uuid);
+    await _load();
+  }
+
+  Future<void> _showAddExpenseDialog() async {
+    final amountController = TextEditingController();
+    final descController = TextEditingController();
+    var category = TripExpenseCategory.fuel;
+
+    final saved = await showDialog<bool>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Add Trip Expense'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              DropdownButtonFormField<TripExpenseCategory>(
+                initialValue: category,
+                decoration: const InputDecoration(labelText: 'Category'),
+                items: TripExpenseCategory.values
+                    .map((c) => DropdownMenuItem(value: c, child: Text(c.name)))
+                    .toList(),
+                onChanged: (v) => setDialogState(() => category = v ?? TripExpenseCategory.fuel),
+              ),
+              TextField(
+                controller: amountController,
+                decoration: const InputDecoration(labelText: 'Amount'),
+                keyboardType: TextInputType.number,
+              ),
+              TextField(controller: descController, decoration: const InputDecoration(labelText: 'Description (optional)')),
+            ],
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+            FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Save')),
+          ],
+        ),
+      ),
+    );
+
+    if (saved != true) return;
+    final amount = ((double.tryParse(amountController.text) ?? 0) * 100).round();
+    if (amount <= 0) return;
+
+    final businessId = await ref.read(currentBusinessIdProvider.future);
+    final repo = await ref.read(tripExpenseRepositoryProvider.future);
+    await repo.record(
+      businessId: businessId,
+      tripUuid: _trip.uuid,
+      category: category,
+      amountMinorUnits: amount,
+      description: descController.text.isEmpty ? null : descController.text,
+      createdBy: currentUser,
+      deviceId: currentDeviceId,
+    );
+    await _load();
+  }
+
+  Future<FishCategory?> _pickOrCreateCategory() async {
+    final businessId = await ref.read(currentBusinessIdProvider.future);
+    final categoryRepo = await ref.read(fishCategoryRepositoryProvider.future);
+    final categories = await categoryRepo.list(businessId: businessId);
+
+    FishCategory? selected = categories.isNotEmpty ? categories.first : null;
+    final newNameController = TextEditingController();
+
+    if (!mounted) return null;
+    final picked = await showDialog<FishCategory?>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Fish Category'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (categories.isNotEmpty)
+                DropdownButtonFormField<FishCategory>(
+                  initialValue: selected,
+                  decoration: const InputDecoration(labelText: 'Existing category'),
+                  items: categories.map((c) => DropdownMenuItem(value: c, child: Text(c.name))).toList(),
+                  onChanged: (v) => setDialogState(() => selected = v),
+                ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: newNameController,
+                decoration: const InputDecoration(labelText: 'Or add a new category'),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context, null), child: const Text('Cancel')),
+            FilledButton(
+              onPressed: () async {
+                if (newNameController.text.isNotEmpty) {
+                  final created = await categoryRepo.create(businessId: businessId, name: newNameController.text);
+                  if (!context.mounted) return;
+                  Navigator.pop(context, created);
+                } else {
+                  Navigator.pop(context, selected);
+                }
+              },
+              child: const Text('Use'),
+            ),
+          ],
+        ),
+      ),
+    );
+    return picked;
+  }
+
+  Future<void> _showAddCatchDialog() async {
+    final category = await _pickOrCreateCategory();
+    if (category == null) return;
+
+    final weightController = TextEditingController();
+    final valueController = TextEditingController();
+
+    if (!mounted) return;
+    final saved = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Record Catch — ${category.name}'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: weightController,
+              decoration: const InputDecoration(labelText: 'Weight (kg)'),
+              keyboardType: TextInputType.number,
+            ),
+            TextField(
+              controller: valueController,
+              decoration: const InputDecoration(labelText: 'Estimated value (optional)'),
+              keyboardType: TextInputType.number,
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Save')),
+        ],
+      ),
+    );
+
+    if (saved != true) return;
+    final weight = double.tryParse(weightController.text) ?? 0;
+    if (weight <= 0) return;
+
+    final businessId = await ref.read(currentBusinessIdProvider.future);
+    final repo = await ref.read(catchRepositoryProvider.future);
+    await repo.record(
+      tripUuid: _trip.uuid,
+      businessId: businessId,
+      fishCategoryUuid: category.uuid,
+      weightKg: weight,
+      estimatedValueMinorUnits: valueController.text.isEmpty ? null : ((double.tryParse(valueController.text) ?? 0) * 100).round(),
+    );
+    await _load();
+  }
+
+  Future<void> _showAddFishSaleDialog() async {
+    final category = await _pickOrCreateCategory();
+    if (category == null) return;
+
+    final businessId = await ref.read(currentBusinessIdProvider.future);
+    final partyRepo = await ref.read(partyRepositoryProvider.future);
+    final customers = await partyRepo.list(businessId: businessId, type: PartyType.customer);
+
+    final weightController = TextEditingController();
+    final priceController = TextEditingController();
+    var paymentMethod = FishSalePaymentMethod.cash;
+    Party? selectedCustomer;
+
+    if (!mounted) return;
+    final saved = await showDialog<bool>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: Text('Sell Catch — ${category.name}'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: weightController,
+                decoration: const InputDecoration(labelText: 'Weight (kg)'),
+                keyboardType: TextInputType.number,
+              ),
+              TextField(
+                controller: priceController,
+                decoration: const InputDecoration(labelText: 'Price per kg'),
+                keyboardType: TextInputType.number,
+              ),
+              DropdownButtonFormField<FishSalePaymentMethod>(
+                initialValue: paymentMethod,
+                decoration: const InputDecoration(labelText: 'Payment'),
+                items: FishSalePaymentMethod.values
+                    .map((m) => DropdownMenuItem(value: m, child: Text(m.name)))
+                    .toList(),
+                onChanged: (v) => setDialogState(() => paymentMethod = v ?? FishSalePaymentMethod.cash),
+              ),
+              if (paymentMethod == FishSalePaymentMethod.credit)
+                DropdownButtonFormField<Party>(
+                  initialValue: selectedCustomer,
+                  decoration: const InputDecoration(labelText: 'Customer'),
+                  items: customers.map((c) => DropdownMenuItem(value: c, child: Text(c.name))).toList(),
+                  onChanged: (v) => setDialogState(() => selectedCustomer = v),
+                ),
+            ],
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+            FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Save')),
+          ],
+        ),
+      ),
+    );
+
+    if (saved != true) return;
+    final weight = double.tryParse(weightController.text) ?? 0;
+    final price = ((double.tryParse(priceController.text) ?? 0) * 100).round();
+    if (weight <= 0 || price <= 0) return;
+    if (paymentMethod == FishSalePaymentMethod.credit && selectedCustomer == null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Select a customer for a credit sale')));
+      }
+      return;
+    }
+
+    final repo = await ref.read(fishSaleRepositoryProvider.future);
+    try {
+      await repo.create(
+        businessId: businessId,
+        tripUuid: _trip.uuid,
+        customerUuid: selectedCustomer?.uuid,
+        fishCategoryUuid: category.uuid,
+        weightKg: weight,
+        unitPriceMinorUnitsPerKg: price,
+        paymentMethod: paymentMethod,
+        createdBy: currentUser,
+        deviceId: currentDeviceId,
+      );
+      await _load();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final expenses = _expenses;
+    final catches = _catches;
+    final sales = _sales;
+    final profit = _profit;
+
+    return Scaffold(
+      appBar: AppBar(
+        title: Text('Trip — ${_trip.status.name}'),
+        actions: [
+          if (_trip.status == TripStatus.planned)
+            TextButton(onPressed: _startTrip, child: const Text('Start Trip', style: TextStyle(color: Colors.white))),
+          if (_trip.status == TripStatus.inProgress)
+            TextButton(onPressed: _completeTrip, child: const Text('Complete Trip', style: TextStyle(color: Colors.white))),
+        ],
+      ),
+      body: expenses == null || catches == null || sales == null
+          ? const Center(child: CircularProgressIndicator())
+          : ListView(
+              padding: const EdgeInsets.all(16),
+              children: [
+                if (profit != null)
+                  Card(
+                    color: profit.profitMinorUnits >= 0 ? Colors.green.shade50 : Colors.red.shade50,
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text('Revenue: ${_money(profit.revenueMinorUnits)}'),
+                          Text('Expenses: ${_money(profit.expenseMinorUnits)}'),
+                          Text(
+                            'Profit: ${_money(profit.profitMinorUnits)}',
+                            style: const TextStyle(fontWeight: FontWeight.bold),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                const SizedBox(height: 16),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text('Expenses', style: Theme.of(context).textTheme.titleMedium),
+                    TextButton(onPressed: _showAddExpenseDialog, child: const Text('+ Add Expense')),
+                  ],
+                ),
+                ...expenses.map((e) => ListTile(
+                      title: Text(e.category.name),
+                      subtitle: e.description != null ? Text(e.description!) : null,
+                      trailing: Text(_money(e.amountMinorUnits)),
+                    )),
+                const Divider(),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text('Catch', style: Theme.of(context).textTheme.titleMedium),
+                    TextButton(onPressed: _showAddCatchDialog, child: const Text('+ Record Catch')),
+                  ],
+                ),
+                ...catches.map((c) => ListTile(
+                      title: Text(_categoriesByUuid[c.fishCategoryUuid]?.name ?? c.fishCategoryUuid),
+                      trailing: Text('${c.weightKg} kg'),
+                    )),
+                const Divider(),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text('Fish Sales', style: Theme.of(context).textTheme.titleMedium),
+                    TextButton(onPressed: _showAddFishSaleDialog, child: const Text('+ Sell Catch')),
+                  ],
+                ),
+                ...sales.map((s) => ListTile(
+                      title: Text(_categoriesByUuid[s.fishCategoryUuid]?.name ?? s.fishCategoryUuid),
+                      subtitle: Text('${s.weightKg} kg @ ${_money(s.unitPriceMinorUnitsPerKg)}/kg  •  ${s.paymentMethod.name}'),
+                      trailing: Text(_money(s.totalMinorUnits)),
+                    )),
+              ],
+            ),
+    );
+  }
+}
+
+String _money(int minorUnits) => (minorUnits / 100).toStringAsFixed(2);

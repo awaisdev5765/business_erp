@@ -54,6 +54,9 @@ class JournalLine {
   static const createPartyIndexSql =
       'CREATE INDEX idx_journal_lines_party ON $tableName (party_uuid)';
 
+  static const createDimensionIndexSql =
+      'CREATE INDEX idx_journal_lines_dimension ON $tableName (dimension_uuid)';
+
   Map<String, Object?> toMap() => {
         'entry_uuid': entryUuid,
         'account_code': accountCode,

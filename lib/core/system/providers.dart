@@ -7,9 +7,15 @@ import '../accounting/chart_of_accounts_seed.dart';
 import '../accounting/fiscal_period_repository.dart';
 import '../accounting/ledger_repository.dart';
 import '../accounting/tax_rate_repository.dart';
+import '../activity/trip_repository.dart';
+import '../asset/operating_asset_repository.dart';
 import '../party/party_repository.dart';
 import '../tenant/business.dart';
 import '../transaction/payment_repository.dart';
+import '../../features/fishery/catch_repository.dart';
+import '../../features/fishery/fish_sale_repository.dart';
+import '../../features/fishery/trip_expense_repository.dart';
+import '../../features/fishery/trip_profit_service.dart';
 import '../../features/spare_parts/inventory/product_repository.dart';
 import '../../features/spare_parts/purchases/purchase_repository.dart';
 import '../../features/spare_parts/sales/sale_repository.dart';
@@ -114,4 +120,46 @@ final paymentRepositoryProvider = FutureProvider<PaymentRepository>((ref) async 
   final ledger = await ref.watch(ledgerRepositoryProvider.future);
   final numbering = await ref.watch(numberSequenceServiceProvider.future);
   return PaymentRepository(db, ledger, numbering);
+});
+
+// --- Fishery vertical ---
+
+final operatingAssetRepositoryProvider = FutureProvider<OperatingAssetRepository>((ref) async {
+  final db = await ref.watch(databaseProvider.future);
+  return OperatingAssetRepository(db);
+});
+
+final tripRepositoryProvider = FutureProvider<TripRepository>((ref) async {
+  final db = await ref.watch(databaseProvider.future);
+  return TripRepository(db);
+});
+
+final tripExpenseRepositoryProvider = FutureProvider<TripExpenseRepository>((ref) async {
+  final db = await ref.watch(databaseProvider.future);
+  final ledger = await ref.watch(ledgerRepositoryProvider.future);
+  final trips = await ref.watch(tripRepositoryProvider.future);
+  return TripExpenseRepository(db, ledger, trips);
+});
+
+final fishCategoryRepositoryProvider = FutureProvider<FishCategoryRepository>((ref) async {
+  final db = await ref.watch(databaseProvider.future);
+  return FishCategoryRepository(db);
+});
+
+final catchRepositoryProvider = FutureProvider<CatchRepository>((ref) async {
+  final db = await ref.watch(databaseProvider.future);
+  return CatchRepository(db);
+});
+
+final fishSaleRepositoryProvider = FutureProvider<FishSaleRepository>((ref) async {
+  final db = await ref.watch(databaseProvider.future);
+  final ledger = await ref.watch(ledgerRepositoryProvider.future);
+  final trips = await ref.watch(tripRepositoryProvider.future);
+  return FishSaleRepository(db, ledger, trips);
+});
+
+final tripProfitServiceProvider = FutureProvider<TripProfitService>((ref) async {
+  final fishSales = await ref.watch(fishSaleRepositoryProvider.future);
+  final tripExpenses = await ref.watch(tripExpenseRepositoryProvider.future);
+  return TripProfitService(fishSales, tripExpenses);
 });

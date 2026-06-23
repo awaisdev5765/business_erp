@@ -4,6 +4,9 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
+import '../../features/fishery/fish_category.dart';
+import '../../features/fishery/fish_sale.dart';
+import '../../features/fishery/trip_expense.dart';
 import '../../features/spare_parts/inventory/category.dart';
 import '../../features/spare_parts/inventory/product.dart';
 import '../../features/spare_parts/purchases/purchase.dart';
@@ -13,6 +16,8 @@ import '../accounting/bank_account.dart';
 import '../accounting/fiscal_period.dart';
 import '../accounting/journal_entry.dart';
 import '../accounting/tax_rate.dart';
+import '../activity/trip.dart';
+import '../asset/operating_asset.dart';
 import '../party/party.dart';
 import '../tenant/business.dart';
 import '../transaction/payment.dart';
@@ -65,6 +70,7 @@ Future<void> createSchema(DatabaseExecutor db) async {
   await db.execute(JournalLine.createIndexSql);
   await db.execute(JournalLine.createEntryIndexSql);
   await db.execute(JournalLine.createPartyIndexSql);
+  await db.execute(JournalLine.createDimensionIndexSql);
   await db.execute(Party.createTableSql);
   await db.execute(Party.createIndexSql);
   await db.execute(NumberSequence.createTableSql);
@@ -92,4 +98,15 @@ Future<void> createSchema(DatabaseExecutor db) async {
   await db.execute(BankAccount.createTableSql);
   await db.execute(BankStatementLine.createTableSql);
   await db.execute(BankStatementLine.createIndexSql);
+  await db.execute(OperatingAsset.createTableSql);
+  await db.execute(OperatingAsset.createIndexSql);
+  await db.execute(Trip.createTableSql);
+  await db.execute(Trip.createIndexSql);
+  await db.execute(TripExpense.createTableSql);
+  await db.execute(TripExpense.createIndexSql);
+  await db.execute(FishCategory.createTableSql);
+  await db.execute(CatchEntry.createTableSql);
+  await db.execute(CatchEntry.createIndexSql);
+  await db.execute(FishSale.createTableSql);
+  await db.execute(FishSale.createIndexSql);
 }

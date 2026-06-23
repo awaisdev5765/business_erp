@@ -10,6 +10,9 @@ import 'features/accounting/cash_book_screen.dart';
 import 'features/accounting/profit_and_loss_screen.dart';
 import 'features/accounting/trial_balance_screen.dart';
 import 'features/dashboard/dashboard_screen.dart';
+import 'features/fishery/boats_screen.dart';
+import 'features/fishery/crew_screen.dart';
+import 'features/fishery/trips_screen.dart';
 import 'features/spare_parts/inventory/product_list_screen.dart';
 import 'features/spare_parts/purchases/purchase_entry_screen.dart';
 import 'features/spare_parts/sales/sale_entry_screen.dart';
@@ -52,6 +55,9 @@ class _AppShellState extends ConsumerState<_AppShell> {
     (icon: Icons.trending_up_outlined, label: 'P&L'),
     (icon: Icons.history_outlined, label: 'Audit Trail'),
     (icon: Icons.account_balance_outlined, label: 'Bank Accounts'),
+    (icon: Icons.directions_boat_outlined, label: 'Boats'),
+    (icon: Icons.groups_outlined, label: 'Crew'),
+    (icon: Icons.sailing_outlined, label: 'Trips'),
   ];
 
   Widget _buildBody() {
@@ -78,6 +84,12 @@ class _AppShellState extends ConsumerState<_AppShell> {
         return const AuditTrailScreen();
       case 10:
         return const BankAccountsScreen();
+      case 11:
+        return const BoatsScreen();
+      case 12:
+        return const CrewScreen();
+      case 13:
+        return const TripsScreen();
       default:
         return const DashboardScreen();
     }

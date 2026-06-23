@@ -18,10 +18,13 @@ const List<(String, String, AccountType)> _seedAccounts = [
   ('3010', "Owner's Capital", AccountType.equity),
   ('3020', 'Retained Earnings', AccountType.equity),
   ('4010', 'Sales Income', AccountType.income),
+  ('4020', 'Trip/Catch Income', AccountType.income),
   ('4030', 'Other Income', AccountType.income),
   ('5010', 'Cost of Goods Sold', AccountType.expense),
   ('5020', 'Fuel Expense', AccountType.expense),
   ('5030', 'Maintenance Expense', AccountType.expense),
+  ('5040', 'Ice Expense', AccountType.expense),
+  ('5045', 'Food Expense', AccountType.expense),
   ('5050', 'Other Operating Expense', AccountType.expense),
 ];
 

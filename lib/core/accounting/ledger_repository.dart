@@ -278,6 +278,28 @@ class LedgerRepository {
     ''', [businessId, JournalEntryStatus.void_.name, accountCode]);
   }
 
+  /// Every JournalLine tagged with one dimension (a Boat or Vehicle uuid),
+  /// across *all* accounts — the Boat/Vehicle Ledger is this query,
+  /// chronological. Unlike accountStatement() (one account, any
+  /// dimension), this is one dimension, any account — e.g. a boat's fuel
+  /// expense (5020), ice expense (5040), and catch revenue (4020) all show
+  /// up together here. See PHASES.md Section 11.
+  Future<List<Map<String, Object?>>> dimensionStatement({
+    required String businessId,
+    required String dimensionUuid,
+  }) async {
+    return db.rawQuery('''
+      SELECT je.uuid AS entry_uuid, je.date, je.source_type, je.source_id, je.description, je.status,
+             jl.account_code, jl.debit_minor_units, jl.credit_minor_units
+      FROM ${JournalLine.tableName} jl
+      INNER JOIN ${JournalEntry.tableName} je ON je.uuid = jl.entry_uuid
+      WHERE je.business_id = ?
+        AND je.status != ?
+        AND jl.dimension_uuid = ?
+      ORDER BY je.date ASC
+    ''', [businessId, JournalEntryStatus.void_.name, dimensionUuid]);
+  }
+
   /// Trial Balance: every account's Dr/Cr totals and net balance, in one
   /// grouped query — the SQL aggregation Isar couldn't do cleanly (this is
   /// the concrete payoff of the sqflite switch documented in PHASES.md
