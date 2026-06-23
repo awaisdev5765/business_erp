@@ -49,12 +49,17 @@ automatically (see `lib/core/system/database.dart`).
 
 **Known gap:** app boots into one auto-seeded business ("My Spare Parts Shop") with a hardcoded `currentUser`/`currentDeviceId` — there's no login, business switcher, or role enforcement yet. That's Identity/Multi-tenant UI work, deferred to Phase 5 alongside Firebase Auth.
 
-## Phase 2 — Accounting hardening
-- [ ] Fiscal Periods (Open/Closed/Locked) + period-close enforcement
-- [ ] Tax Engine (TaxRate, auto-split on Sale/Purchase lines)
-- [ ] Void workflow (status=void_, distinct from reversal)
-- [ ] Audit Trail UI
-- [ ] Bank Accounts + basic reconciliation
+## Phase 2 — Accounting hardening (DONE)
+- [x] Fiscal Periods (Open/Closed/Locked) + period-close enforcement — `FiscalPeriodRepository.assertOpenForPosting()` runs inside `LedgerRepository.postWithin()`'s transaction; opt-in (a business with no periods configured posts freely, unchanged from Phase 0/1). A reversal's date defaults to "now," so reversing an entry from a since-closed period still works without special-casing.
+- [x] Tax Engine (TaxRate registry + per-line tax snapshot on Sale/Purchase, auto-split into account 2020 Tax Payable). Sales: Dr Cash/Receivable tax-inclusive, Cr Sales Income tax-exclusive, Cr Tax Payable (output tax). Purchases: Dr Inventory tax-exclusive, Dr Tax Payable (input tax claim), Cr Accounts Payable tax-inclusive. Both nest through the *same* 2020 control account — a deliberate simplification (see doc comment on `PurchaseRepository`), not full input/output tax reporting.
+- [x] Void workflow (`LedgerRepository.void_()`), distinct from reversal: marks `status=void_` and writes nothing else — every balance/statement/trial-balance query already filters `status != void_`, so a voided entry simply stops counting everywhere, no offsetting entry needed. Reachable from the Party Ledger screen with a required reason. Reverse is for "this happened but needs correcting"; Void is for "this should never have counted."
+- [x] Audit Trail (`AuditLog` table, opt-in third constructor arg on `LedgerRepository`) — every `void_()`/`reverse()` call logs who/what/when/why. Read-only Audit Trail screen wired into nav.
+- [x] Bank Accounts + basic reconciliation — `BankAccount` registry + manually-entered `BankStatementLine`s, tick off cleared lines, compare cleared running balance against a stated statement closing balance. CSV/OFX import and wiring Sales/Payments to post against a *specific* bank account (rather than the generic 1010/1020 GL accounts) are both deferred — see doc comment on `BankAccount`.
+- [x] Tests: 27 total across fiscal periods, tax engine, void, audit log, and bank reconciliation — all passing.
+
+**Bug found and fixed mid-Phase-2:** `lib/core/accounting/ledger_repository.dart` was discovered corrupted (large chunks of `postWithin()`/`reverse()` missing — likely an editor/save mishap) partway through this phase. Rebuilt from scratch with the same logic plus the new `void_()` method; `flutter analyze`/`flutter test` confirmed the rebuild was correct.
+
+**Sandbox note:** `flutter test`/`flutter pub get` can hang indefinitely in network-sandboxed shells because the transitive `sqlite3` package now builds its native library from source via a Dart "hooks" build step on first run, instead of shipping a prebuilt binary — that build step needs network access it doesn't get by default in this environment. Symptom: a `dart ... hook.dill` process sitting at the same elapsed time with zero test output. Fix: run with the sandbox disabled for that one command.
 
 ## Phase 3 — Fishery vertical
 - [ ] `OperatingAsset` (Boats) — reuses the same abstract entity as Vehicles later

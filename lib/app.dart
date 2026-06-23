@@ -4,6 +4,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'core/party/party.dart';
 import 'core/party/party_list_screen.dart';
 import 'core/system/providers.dart';
+import 'features/accounting/audit_trail_screen.dart';
+import 'features/accounting/bank_accounts_screen.dart';
 import 'features/accounting/cash_book_screen.dart';
 import 'features/accounting/profit_and_loss_screen.dart';
 import 'features/accounting/trial_balance_screen.dart';
@@ -48,6 +50,8 @@ class _AppShellState extends ConsumerState<_AppShell> {
     (icon: Icons.account_balance_wallet_outlined, label: 'Cash Book'),
     (icon: Icons.balance_outlined, label: 'Trial Balance'),
     (icon: Icons.trending_up_outlined, label: 'P&L'),
+    (icon: Icons.history_outlined, label: 'Audit Trail'),
+    (icon: Icons.account_balance_outlined, label: 'Bank Accounts'),
   ];
 
   Widget _buildBody() {
@@ -70,6 +74,10 @@ class _AppShellState extends ConsumerState<_AppShell> {
         return const TrialBalanceScreen();
       case 8:
         return const ProfitAndLossScreen();
+      case 9:
+        return const AuditTrailScreen();
+      case 10:
+        return const BankAccountsScreen();
       default:
         return const DashboardScreen();
     }

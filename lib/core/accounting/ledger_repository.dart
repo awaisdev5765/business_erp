@@ -1,7 +1,9 @@
 import 'package:sqflite/sqflite.dart';
 import 'package:uuid/uuid.dart';
 
+import '../system/audit_log_repository.dart';
 import 'account.dart';
+import 'fiscal_period_repository.dart';
 import 'journal_entry.dart';
 
 const _uuid = Uuid();
@@ -10,9 +12,15 @@ const _uuid = Uuid();
 /// financial data — modules call [post], never touch account balances
 /// directly. See PHASES.md Section 11.
 class LedgerRepository {
-  LedgerRepository(this.db);
+  /// [fiscalPeriods] and [auditLog] are both optional — a business that
+  /// hasn't configured fiscal periods posts freely (Phase 0/1 behavior
+  /// unchanged), and without an audit log wired in, void/reverse simply
+  /// skip writing an audit entry rather than failing.
+  LedgerRepository(this.db, [this.fiscalPeriods, this.auditLog]);
 
   final Database db;
+  final FiscalPeriodRepository? fiscalPeriods;
+  final AuditLogRepository? auditLog;
 
   Future<JournalEntry> post({
     required String businessId,
@@ -86,6 +94,10 @@ class LedgerRepository {
       );
     }
 
+    if (fiscalPeriods != null) {
+      await fiscalPeriods!.assertOpenForPosting(txn, businessId: businessId, date: entry.date);
+    }
+
     await txn.insert(JournalEntry.tableName, entry.toMap());
     for (final line in lines) {
       await txn.insert(JournalLine.tableName, line.toMap());
@@ -97,6 +109,11 @@ class LedgerRepository {
   /// Reverses a posted entry by appending a new entry with flipped
   /// debits/credits. Never mutates the original's lines — see PHASES.md
   /// Section 11 ("Reversal, not edit"). Only the status flag changes.
+  /// Use this when the entry was correct *at the time* but later needs
+  /// correcting (a refund, a pricing error caught after the fact) — the
+  /// original's effect stays in history, offset by the reversal. Contrast
+  /// with [void_], which is for entries that should never have counted at
+  /// all (e.g. a duplicate or test entry caught the same day).
   Future<JournalEntry> reverse(
     JournalEntry original, {
     required String createdBy,
@@ -134,7 +151,61 @@ class LedgerRepository {
       whereArgs: [original.uuid],
     );
 
+    if (auditLog != null) {
+      await auditLog!.log(
+        businessId: original.businessId,
+        action: 'reverse',
+        entityType: 'JournalEntry',
+        entityId: original.uuid,
+        performedBy: createdBy,
+        details: 'Reversed by new entry ${reversal.uuid}',
+      );
+    }
+
     return reversal;
+  }
+
+  /// Voids a posted entry: marks it `void_` and nothing else. No
+  /// offsetting entry is needed — every balance/statement/trial-balance
+  /// query already filters `status != void_` (see accountBalanceMinorUnits
+  /// etc. below), so a voided entry simply stops contributing anywhere,
+  /// while the row itself is kept forever (no hard deletes, per PHASES.md
+  /// Section 11). Use this only for entries that should never have had any
+  /// effect — for entries that genuinely happened and need correcting
+  /// later, use [reverse] instead.
+  Future<void> void_(
+    JournalEntry original, {
+    required String voidedBy,
+    required String reason,
+  }) async {
+    if (original.status != JournalEntryStatus.posted) {
+      throw StateError('Only posted entries can be voided');
+    }
+    if (reason.trim().isEmpty) {
+      throw ArgumentError('A void requires a reason — this is permanent audit trail text');
+    }
+
+    await db.update(
+      JournalEntry.tableName,
+      {
+        'status': JournalEntryStatus.void_.name,
+        'description': 'VOIDED by $voidedBy: $reason'
+            '${original.description != null ? ' (was: ${original.description})' : ''}',
+      },
+      where: 'uuid = ?',
+      whereArgs: [original.uuid],
+    );
+
+    if (auditLog != null) {
+      await auditLog!.log(
+        businessId: original.businessId,
+        action: 'void',
+        entityType: 'JournalEntry',
+        entityId: original.uuid,
+        performedBy: voidedBy,
+        details: reason,
+      );
+    }
   }
 
   Future<JournalEntry?> findByUuid(String uuid) async {
@@ -196,7 +267,7 @@ class LedgerRepository {
     required String accountCode,
   }) async {
     return db.rawQuery('''
-      SELECT je.date, je.source_type, je.source_id, je.description, je.status,
+      SELECT je.uuid AS entry_uuid, je.date, je.source_type, je.source_id, je.description, je.status,
              jl.debit_minor_units, jl.credit_minor_units
       FROM ${JournalLine.tableName} jl
       INNER JOIN ${JournalEntry.tableName} je ON je.uuid = jl.entry_uuid

@@ -2,14 +2,18 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:uuid/uuid.dart';
 
+import '../accounting/bank_account_repository.dart';
 import '../accounting/chart_of_accounts_seed.dart';
+import '../accounting/fiscal_period_repository.dart';
 import '../accounting/ledger_repository.dart';
+import '../accounting/tax_rate_repository.dart';
 import '../party/party_repository.dart';
 import '../tenant/business.dart';
 import '../transaction/payment_repository.dart';
 import '../../features/spare_parts/inventory/product_repository.dart';
 import '../../features/spare_parts/purchases/purchase_repository.dart';
 import '../../features/spare_parts/sales/sale_repository.dart';
+import 'audit_log_repository.dart';
 import 'database.dart';
 import 'number_sequence_service.dart';
 
@@ -47,9 +51,31 @@ final currentBusinessIdProvider = FutureProvider<String>((ref) async {
 const currentUser = 'owner';
 const currentDeviceId = 'desktop-1';
 
+final fiscalPeriodRepositoryProvider = FutureProvider<FiscalPeriodRepository>((ref) async {
+  final db = await ref.watch(databaseProvider.future);
+  return FiscalPeriodRepository(db);
+});
+
+final auditLogRepositoryProvider = FutureProvider<AuditLogRepository>((ref) async {
+  final db = await ref.watch(databaseProvider.future);
+  return AuditLogRepository(db);
+});
+
 final ledgerRepositoryProvider = FutureProvider<LedgerRepository>((ref) async {
   final db = await ref.watch(databaseProvider.future);
-  return LedgerRepository(db);
+  final fiscalPeriods = await ref.watch(fiscalPeriodRepositoryProvider.future);
+  final auditLog = await ref.watch(auditLogRepositoryProvider.future);
+  return LedgerRepository(db, fiscalPeriods, auditLog);
+});
+
+final taxRateRepositoryProvider = FutureProvider<TaxRateRepository>((ref) async {
+  final db = await ref.watch(databaseProvider.future);
+  return TaxRateRepository(db);
+});
+
+final bankAccountRepositoryProvider = FutureProvider<BankAccountRepository>((ref) async {
+  final db = await ref.watch(databaseProvider.future);
+  return BankAccountRepository(db);
 });
 
 final productRepositoryProvider = FutureProvider<ProductRepository>((ref) async {

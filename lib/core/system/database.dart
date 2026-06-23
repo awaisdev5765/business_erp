@@ -9,10 +9,14 @@ import '../../features/spare_parts/inventory/product.dart';
 import '../../features/spare_parts/purchases/purchase.dart';
 import '../../features/spare_parts/sales/sale.dart';
 import '../accounting/account.dart';
+import '../accounting/bank_account.dart';
+import '../accounting/fiscal_period.dart';
 import '../accounting/journal_entry.dart';
+import '../accounting/tax_rate.dart';
 import '../party/party.dart';
 import '../tenant/business.dart';
 import '../transaction/payment.dart';
+import 'audit_log.dart';
 import 'number_sequence.dart';
 
 /// Single SQLite instance for the whole app. Firestore (when wired in a
@@ -80,4 +84,12 @@ Future<void> createSchema(DatabaseExecutor db) async {
   await db.execute(SaleLine.createIndexSql);
   await db.execute(Payment.createTableSql);
   await db.execute(Payment.createIndexSql);
+  await db.execute(FiscalPeriod.createTableSql);
+  await db.execute(FiscalPeriod.createIndexSql);
+  await db.execute(TaxRate.createTableSql);
+  await db.execute(AuditLog.createTableSql);
+  await db.execute(AuditLog.createIndexSql);
+  await db.execute(BankAccount.createTableSql);
+  await db.execute(BankStatementLine.createTableSql);
+  await db.execute(BankStatementLine.createIndexSql);
 }

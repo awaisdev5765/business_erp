@@ -9,6 +9,7 @@ class SaleLine {
     required this.quantity,
     required this.unitPriceMinorUnits,
     required this.unitCostMinorUnits,
+    this.taxRatePercent = 0,
   });
 
   final String saleUuid;
@@ -21,8 +22,15 @@ class SaleLine {
   /// if the product's cost price changes later.
   final int unitCostMinorUnits;
 
+  /// Snapshot of the product's tax rate at sale time — same reasoning as
+  /// unitCostMinorUnits: a later rate change shouldn't retroactively alter
+  /// a posted sale's tax line. unitPriceMinorUnits is treated as
+  /// tax-exclusive; tax is computed on top (see SaleRepository).
+  final double taxRatePercent;
+
   int get lineTotalMinorUnits => quantity * unitPriceMinorUnits;
   int get lineCostMinorUnits => quantity * unitCostMinorUnits;
+  int get lineTaxMinorUnits => (lineTotalMinorUnits * taxRatePercent / 100).round();
 
   static const tableName = 'sale_lines';
 
@@ -33,7 +41,8 @@ class SaleLine {
       product_uuid TEXT NOT NULL,
       quantity INTEGER NOT NULL,
       unit_price_minor_units INTEGER NOT NULL,
-      unit_cost_minor_units INTEGER NOT NULL
+      unit_cost_minor_units INTEGER NOT NULL,
+      tax_rate_percent REAL NOT NULL DEFAULT 0
     )
   ''';
 
@@ -45,6 +54,7 @@ class SaleLine {
         'quantity': quantity,
         'unit_price_minor_units': unitPriceMinorUnits,
         'unit_cost_minor_units': unitCostMinorUnits,
+        'tax_rate_percent': taxRatePercent,
       };
 
   factory SaleLine.fromMap(Map<String, Object?> map) => SaleLine(
@@ -53,6 +63,7 @@ class SaleLine {
         quantity: map['quantity'] as int,
         unitPriceMinorUnits: map['unit_price_minor_units'] as int,
         unitCostMinorUnits: map['unit_cost_minor_units'] as int,
+        taxRatePercent: (map['tax_rate_percent'] as num?)?.toDouble() ?? 0,
       );
 }
 
@@ -90,6 +101,8 @@ class Sale {
 
   int get totalMinorUnits => lines.fold(0, (sum, l) => sum + l.lineTotalMinorUnits);
   int get totalCostMinorUnits => lines.fold(0, (sum, l) => sum + l.lineCostMinorUnits);
+  int get totalTaxMinorUnits => lines.fold(0, (sum, l) => sum + l.lineTaxMinorUnits);
+  int get grandTotalMinorUnits => totalMinorUnits + totalTaxMinorUnits;
 
   static const tableName = 'sales';
 

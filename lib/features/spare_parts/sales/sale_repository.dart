@@ -69,6 +69,7 @@ class SaleRepository {
         quantity: input.quantity,
         unitPriceMinorUnits: input.unitPriceMinorUnits,
         unitCostMinorUnits: product.costPriceMinorUnits,
+        taxRatePercent: product.taxRatePercent,
       ));
     }
 
@@ -87,6 +88,8 @@ class SaleRepository {
 
     final totalMinorUnits = sale.totalMinorUnits;
     final totalCostMinorUnits = sale.totalCostMinorUnits;
+    final totalTaxMinorUnits = sale.totalTaxMinorUnits;
+    final grandTotalMinorUnits = sale.grandTotalMinorUnits;
 
     await db.transaction((txn) async {
       await txn.insert(Sale.tableName, sale.toMap());
@@ -119,16 +122,24 @@ class SaleRepository {
           JournalLine(
             entryUuid: '',
             accountCode: paymentMethod == PaymentMethod.cash ? '1010' : '1030',
-            debitMinorUnits: totalMinorUnits,
+            // Customer pays/owes the tax-inclusive amount.
+            debitMinorUnits: grandTotalMinorUnits,
             creditMinorUnits: 0,
             partyUuid: paymentMethod == PaymentMethod.credit ? customerUuid : null,
           ),
           JournalLine(
             entryUuid: '',
-            accountCode: '4010', // Sales Income
+            accountCode: '4010', // Sales Income (tax-exclusive)
             debitMinorUnits: 0,
             creditMinorUnits: totalMinorUnits,
           ),
+          if (totalTaxMinorUnits > 0)
+            JournalLine(
+              entryUuid: '',
+              accountCode: '2020', // Tax Payable — output tax collected
+              debitMinorUnits: 0,
+              creditMinorUnits: totalTaxMinorUnits,
+            ),
           JournalLine(
             entryUuid: '',
             accountCode: '5010', // Cost of Goods Sold

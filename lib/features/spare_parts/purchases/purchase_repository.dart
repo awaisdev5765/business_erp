@@ -18,9 +18,19 @@ class PurchaseLineInput {
 }
 
 /// Credit purchase from a supplier: stock increases, supplier payable
-/// increases. Posts Dr Inventory(1040) / Cr Accounts Payable(2010), with
-/// the payable line tagged to the supplier so it shows up in their ledger
-/// (PartyRepository.outstandingBalanceMinorUnits). See PHASES.md Section 11.
+/// increases. Posts Dr Inventory(1040) [+ Dr Tax Payable(2020) for input
+/// tax, if the product carries a tax rate] / Cr Accounts Payable(2010) for
+/// the tax-inclusive total, tagged to the supplier so it shows up in their
+/// ledger (PartyRepository.outstandingBalanceMinorUnits). See PHASES.md
+/// Section 11.
+///
+/// Netting input tax straight through account 2020 (rather than a
+/// separate "Tax Receivable" account) is a deliberate Phase 2
+/// simplification: it gives a correct net VAT/sales-tax position in one
+/// control account, which is enough for a small business's own books, but
+/// is not a substitute for proper input/output tax reporting if a real
+/// tax filing needs that breakdown — that's future Tax Summary report
+/// work, not a Phase 2 goal.
 class PurchaseRepository {
   PurchaseRepository(this.db, this.ledger, this.products, this.numbering);
 
@@ -45,14 +55,20 @@ class PurchaseRepository {
     final uuid = _uuid.v4();
     final purchaseDate = date ?? DateTime.now();
 
-    final lines = lineInputs
-        .map((l) => PurchaseLine(
-              purchaseUuid: uuid,
-              productUuid: l.productUuid,
-              quantity: l.quantity,
-              unitCostMinorUnits: l.unitCostMinorUnits,
-            ))
-        .toList();
+    final lines = <PurchaseLine>[];
+    for (final input in lineInputs) {
+      final product = await products.findByUuid(input.productUuid);
+      if (product == null) {
+        throw StateError('Product ${input.productUuid} not found');
+      }
+      lines.add(PurchaseLine(
+        purchaseUuid: uuid,
+        productUuid: input.productUuid,
+        quantity: input.quantity,
+        unitCostMinorUnits: input.unitCostMinorUnits,
+        taxRatePercent: product.taxRatePercent,
+      ));
+    }
 
     final purchase = Purchase(
       uuid: uuid,
@@ -67,6 +83,8 @@ class PurchaseRepository {
     );
 
     final totalMinorUnits = purchase.totalMinorUnits;
+    final totalTaxMinorUnits = purchase.totalTaxMinorUnits;
+    final grandTotalMinorUnits = purchase.grandTotalMinorUnits;
 
     await db.transaction((txn) async {
       await txn.insert(Purchase.tableName, purchase.toMap());
@@ -98,15 +116,22 @@ class PurchaseRepository {
         rawLines: [
           JournalLine(
             entryUuid: '',
-            accountCode: '1040', // Inventory
+            accountCode: '1040', // Inventory (tax-exclusive)
             debitMinorUnits: totalMinorUnits,
             creditMinorUnits: 0,
           ),
+          if (totalTaxMinorUnits > 0)
+            JournalLine(
+              entryUuid: '',
+              accountCode: '2020', // Tax Payable — input tax claimable
+              debitMinorUnits: totalTaxMinorUnits,
+              creditMinorUnits: 0,
+            ),
           JournalLine(
             entryUuid: '',
-            accountCode: '2010', // Accounts Payable
+            accountCode: '2010', // Accounts Payable (tax-inclusive)
             debitMinorUnits: 0,
-            creditMinorUnits: totalMinorUnits,
+            creditMinorUnits: grandTotalMinorUnits,
             partyUuid: supplierUuid,
           ),
         ],

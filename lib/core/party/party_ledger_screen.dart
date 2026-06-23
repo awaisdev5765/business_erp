@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../accounting/journal_entry.dart';
 import '../system/providers.dart';
 import '../transaction/payment.dart';
 import 'party.dart';
@@ -71,6 +72,65 @@ class _PartyLedgerScreenState extends ConsumerState<PartyLedgerScreen> {
     await _load();
   }
 
+  Future<void> _showVoidDialog(String entryUuid) async {
+    final reasonController = TextEditingController();
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Void Transaction'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Voiding removes this transaction from all balances permanently. '
+              'The record itself is kept for audit purposes, but it stops counting '
+              'anywhere. Use this only if the transaction should never have been '
+              'recorded at all — for a transaction that happened but needs '
+              'correcting, use a reversal instead.',
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: reasonController,
+              autofocus: true,
+              decoration: const InputDecoration(labelText: 'Reason (required)'),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Void'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+    if (reasonController.text.trim().isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('A reason is required')));
+      }
+      return;
+    }
+
+    final ledger = await ref.read(ledgerRepositoryProvider.future);
+    final entry = await ledger.findByUuid(entryUuid);
+    if (entry == null) return;
+
+    try {
+      await ledger.void_(entry, voidedBy: currentUser, reason: reasonController.text.trim());
+      await _load();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final statement = _statement;
@@ -99,17 +159,30 @@ class _PartyLedgerScreenState extends ConsumerState<PartyLedgerScreen> {
                     final credit = row['credit_minor_units'] as int;
                     runningBalance += debit - credit;
                     final date = DateTime.parse(row['date'] as String);
+                    final status = row['status'] as String;
+                    final entryUuid = row['entry_uuid'] as String;
 
                     return ListTile(
                       title: Text('${row['source_type']} — ${row['description'] ?? row['source_id']}'),
-                      subtitle: Text('${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}  •  ${row['status']}'),
-                      trailing: Column(
-                        crossAxisAlignment: CrossAxisAlignment.end,
+                      subtitle: Text('${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}  •  $status'),
+                      trailing: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          if (debit > 0) Text('Dr ${_money(debit)}', style: const TextStyle(color: Colors.red)),
-                          if (credit > 0) Text('Cr ${_money(credit)}', style: const TextStyle(color: Colors.green)),
-                          Text('Bal: ${_money(runningBalance)}', style: const TextStyle(fontWeight: FontWeight.bold)),
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.end,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              if (debit > 0) Text('Dr ${_money(debit)}', style: const TextStyle(color: Colors.red)),
+                              if (credit > 0) Text('Cr ${_money(credit)}', style: const TextStyle(color: Colors.green)),
+                              Text('Bal: ${_money(runningBalance)}', style: const TextStyle(fontWeight: FontWeight.bold)),
+                            ],
+                          ),
+                          if (status == JournalEntryStatus.posted.name)
+                            IconButton(
+                              icon: const Icon(Icons.block, size: 18),
+                              tooltip: 'Void this transaction',
+                              onPressed: () => _showVoidDialog(entryUuid),
+                            ),
                         ],
                       ),
                     );

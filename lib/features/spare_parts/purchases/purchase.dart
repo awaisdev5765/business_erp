@@ -6,6 +6,7 @@ class PurchaseLine {
     required this.productUuid,
     required this.quantity,
     required this.unitCostMinorUnits,
+    this.taxRatePercent = 0,
   });
 
   final String purchaseUuid;
@@ -13,7 +14,13 @@ class PurchaseLine {
   final int quantity;
   final int unitCostMinorUnits;
 
+  /// Snapshot of the product's tax rate at purchase time — see
+  /// SaleLine.taxRatePercent for the same reasoning. unitCostMinorUnits is
+  /// tax-exclusive; tax is computed on top (see PurchaseRepository).
+  final double taxRatePercent;
+
   int get lineTotalMinorUnits => quantity * unitCostMinorUnits;
+  int get lineTaxMinorUnits => (lineTotalMinorUnits * taxRatePercent / 100).round();
 
   static const tableName = 'purchase_lines';
 
@@ -23,7 +30,8 @@ class PurchaseLine {
       purchase_uuid TEXT NOT NULL,
       product_uuid TEXT NOT NULL,
       quantity INTEGER NOT NULL,
-      unit_cost_minor_units INTEGER NOT NULL
+      unit_cost_minor_units INTEGER NOT NULL,
+      tax_rate_percent REAL NOT NULL DEFAULT 0
     )
   ''';
 
@@ -35,6 +43,7 @@ class PurchaseLine {
         'product_uuid': productUuid,
         'quantity': quantity,
         'unit_cost_minor_units': unitCostMinorUnits,
+        'tax_rate_percent': taxRatePercent,
       };
 
   factory PurchaseLine.fromMap(Map<String, Object?> map) => PurchaseLine(
@@ -42,6 +51,7 @@ class PurchaseLine {
         productUuid: map['product_uuid'] as String,
         quantity: map['quantity'] as int,
         unitCostMinorUnits: map['unit_cost_minor_units'] as int,
+        taxRatePercent: (map['tax_rate_percent'] as num?)?.toDouble() ?? 0,
       );
 }
 
@@ -72,6 +82,8 @@ class Purchase {
   final List<PurchaseLine> lines;
 
   int get totalMinorUnits => lines.fold(0, (sum, l) => sum + l.lineTotalMinorUnits);
+  int get totalTaxMinorUnits => lines.fold(0, (sum, l) => sum + l.lineTaxMinorUnits);
+  int get grandTotalMinorUnits => totalMinorUnits + totalTaxMinorUnits;
 
   static const tableName = 'purchases';
 

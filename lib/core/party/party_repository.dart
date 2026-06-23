@@ -95,7 +95,7 @@ class PartyRepository {
   /// chronological, for the ledger detail screen.
   Future<List<Map<String, Object?>>> statementOfAccount(String partyUuid) async {
     return db.rawQuery('''
-      SELECT je.date, je.source_type, je.source_id, je.description,
+      SELECT je.uuid AS entry_uuid, je.date, je.source_type, je.source_id, je.description,
              jl.debit_minor_units, jl.credit_minor_units, je.status
       FROM ${JournalLine.tableName} jl
       INNER JOIN ${JournalEntry.tableName} je ON je.uuid = jl.entry_uuid
