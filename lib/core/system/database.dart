@@ -14,6 +14,7 @@ import '../../features/transport/contract.dart';
 import '../../features/transport/trip_income.dart';
 import '../accounting/account.dart';
 import '../accounting/approval_threshold.dart';
+import '../accounting/balance_rollup.dart';
 import '../accounting/bank_account.dart';
 import '../accounting/fiscal_period.dart';
 import '../accounting/fixed_asset.dart';
@@ -133,4 +134,6 @@ Future<void> createSchema(DatabaseExecutor db) async {
   await db.execute(SalaryRecord.createIndexSql);
   await db.execute(SalaryPayment.createTableSql);
   await db.execute(SalaryPayment.createIndexSql);
+  await db.execute(AccountBalanceRollup.createTableSql);
+  await db.execute(PartyBalanceRollup.createTableSql);
 }

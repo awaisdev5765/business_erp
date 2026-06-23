@@ -1,6 +1,7 @@
 import 'package:sqflite/sqflite.dart';
 import 'package:uuid/uuid.dart';
 
+import '../accounting/balance_rollup_repository.dart';
 import '../accounting/journal_entry.dart';
 import '../sync/sync_queue_item.dart';
 import '../sync/sync_queue_repository.dart';
@@ -9,12 +10,16 @@ import 'party.dart';
 const _uuid = Uuid();
 
 class PartyRepository {
-  /// [syncQueue] is optional, same opt-in pattern as elsewhere — without
-  /// one, Party creation/updates simply aren't queued for sync.
-  PartyRepository(this.db, [this.syncQueue]);
+  /// [syncQueue] and [rollups] are optional, same opt-in pattern as
+  /// elsewhere — without a sync queue, Party creation/updates simply
+  /// aren't queued for sync; without [rollups],
+  /// `outstandingBalanceMinorUnits()` falls back to scanning
+  /// `journal_lines` directly (PHASES.md Phase 8).
+  PartyRepository(this.db, [this.syncQueue, this.rollups]);
 
   final Database db;
   final SyncQueueRepository? syncQueue;
+  final BalanceRollupRepository? rollups;
 
   Future<Party> create({
     required String businessId,
@@ -112,6 +117,10 @@ class PartyRepository {
   /// business (receivable); negative = business owes the party (payable).
   /// See PHASES.md Section 11 ("sub-ledgers are views, not separate tables").
   Future<int> outstandingBalanceMinorUnits(String partyUuid) async {
+    if (rollups != null) {
+      return rollups!.partyBalance(partyUuid);
+    }
+
     final result = await db.rawQuery('''
       SELECT
         COALESCE(SUM(jl.debit_minor_units), 0) AS total_debit,

@@ -296,3 +296,50 @@ clearly needed by the three businesses this app is actually built for.
 - [x] Tests: 4 new (covers posting correctness, Captain/Crew/Driver
       eligibility — not just `employee` — double-payment rejection, and
       multi-period payment), 64 total passing, `flutter analyze` clean
+
+## Phase 8 — Performance Rollups (DONE)
+Splitting Rollup Tables out of the speculative "Phase 8+" bucket
+(multi-currency, SaaS expansion) as its own phase — unlike those two,
+this doesn't require a product decision (which currencies? resell to
+others?), it's pure infrastructure the original brief explicitly called
+for ("Support 100,000+ Sales/Ledger Entries... Dashboard must remain
+fast") and PHASES.md Section 12 already named as the eventual fix for
+`accountBalanceMinorUnits`/`outstandingBalanceMinorUnits` scanning the
+full `journal_lines` table on every call. Multi-currency and SaaS
+expansion remain in Phase 9+.
+
+- [x] `account_balance_rollups` (business_id, account_code -> running
+      debit/credit totals) and `party_balance_rollups` (party_uuid ->
+      running debit/credit totals) — updated incrementally inside
+      `LedgerRepository.postWithin()` (the single choke point every
+      posting already goes through) via `BalanceRollupRepository
+      .applyLine()`, an upsert (`INSERT ... ON CONFLICT DO UPDATE`)
+- [x] `void_()` decrements the rollups by the voided entry's lines —
+      the one case where a posting's effect needs to be un-counted
+      after the fact (reversed entries still count via their offsetting
+      entry, same as before; only void differs). Wrapped in the same
+      transaction as the status update for atomicity.
+- [x] `accountBalanceMinorUnits()`, `outstandingBalanceMinorUnits()`, and
+      `trialBalance()` read from the rollup tables when wired in. Kept
+      [rollups] **optional**, same opt-in pattern as `fiscalPeriods`/
+      `auditLog`/`syncQueue` — without it, all three fall back to the
+      original scanning queries, which is what let the existing 64
+      tests (none of which pass a `rollups` instance) serve as the
+      regression suite for this change without needing to be rewritten.
+      Bonus: the rollup-backed `trialBalance()` sidesteps the
+      multi-tenant join hazard from Phase 1 entirely, since the rollup's
+      primary key is already `(business_id, account_code)` — there's no
+      join condition left to get wrong.
+- [x] `BalanceRollupRepository.rebuildAll()` — recomputes every rollup
+      row for a business from raw `journal_lines`, for migrating a
+      database that had entries posted before rollups existed, or
+      fixing drift if a rollup and the raw ledger ever disagree. Not run
+      automatically. Tested against a forced-corruption scenario,
+      including the edge case where a party's only entries are now all
+      voided (so they wouldn't appear in a non-void aggregate at all —
+      `rebuildAll()` clears their stale rollup first, rather than only
+      ever touching parties that still have qualifying lines).
+- [x] Tests: 8 new (rollup correctness, rollup/scan agreement, void
+      decrement, reversal non-interference, trial balance equivalence,
+      party rollup, two rebuild scenarios), 72 total passing,
+      `flutter analyze` clean.

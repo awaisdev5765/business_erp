@@ -6,6 +6,7 @@ import 'package:sqflite/sqflite.dart';
 import 'package:uuid/uuid.dart';
 
 import '../accounting/approval_threshold_repository.dart';
+import '../accounting/balance_rollup_repository.dart';
 import '../accounting/bank_account_repository.dart';
 import '../accounting/chart_of_accounts_seed.dart';
 import '../accounting/depreciation_service.dart';
@@ -180,12 +181,18 @@ final conflictRecordRepositoryProvider = FutureProvider<ConflictRecordRepository
   return ConflictRecordRepository(db);
 });
 
+final balanceRollupRepositoryProvider = FutureProvider<BalanceRollupRepository>((ref) async {
+  final db = await ref.watch(databaseProvider.future);
+  return BalanceRollupRepository(db);
+});
+
 final ledgerRepositoryProvider = FutureProvider<LedgerRepository>((ref) async {
   final db = await ref.watch(databaseProvider.future);
   final fiscalPeriods = await ref.watch(fiscalPeriodRepositoryProvider.future);
   final auditLog = await ref.watch(auditLogRepositoryProvider.future);
   final syncQueue = await ref.watch(syncQueueRepositoryProvider.future);
-  return LedgerRepository(db, fiscalPeriods, auditLog, syncQueue);
+  final rollups = await ref.watch(balanceRollupRepositoryProvider.future);
+  return LedgerRepository(db, fiscalPeriods, auditLog, syncQueue, rollups);
 });
 
 final taxRateRepositoryProvider = FutureProvider<TaxRateRepository>((ref) async {
@@ -207,7 +214,8 @@ final productRepositoryProvider = FutureProvider<ProductRepository>((ref) async 
 final partyRepositoryProvider = FutureProvider<PartyRepository>((ref) async {
   final db = await ref.watch(databaseProvider.future);
   final syncQueue = await ref.watch(syncQueueRepositoryProvider.future);
-  return PartyRepository(db, syncQueue);
+  final rollups = await ref.watch(balanceRollupRepositoryProvider.future);
+  return PartyRepository(db, syncQueue, rollups);
 });
 
 final numberSequenceServiceProvider = FutureProvider<NumberSequenceService>((ref) async {

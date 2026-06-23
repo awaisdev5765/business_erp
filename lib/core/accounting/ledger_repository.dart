@@ -5,6 +5,7 @@ import '../sync/sync_queue_item.dart';
 import '../sync/sync_queue_repository.dart';
 import '../system/audit_log_repository.dart';
 import 'account.dart';
+import 'balance_rollup_repository.dart';
 import 'fiscal_period_repository.dart';
 import 'journal_entry.dart';
 
@@ -14,18 +15,23 @@ const _uuid = Uuid();
 /// financial data — modules call [post], never touch account balances
 /// directly. See PHASES.md Section 11.
 class LedgerRepository {
-  /// [fiscalPeriods], [auditLog], and [syncQueue] are all optional — a
-  /// business that hasn't configured fiscal periods posts freely (Phase
-  /// 0/1 behavior unchanged); without an audit log wired in, void/reverse
-  /// simply skip writing an audit entry; without a sync queue, postWithin
-  /// just doesn't enqueue anything (no Firebase project to sync to yet —
-  /// see PHASES.md Phase 5).
-  LedgerRepository(this.db, [this.fiscalPeriods, this.auditLog, this.syncQueue]);
+  /// [fiscalPeriods], [auditLog], [syncQueue], and [rollups] are all
+  /// optional — a business that hasn't configured fiscal periods posts
+  /// freely (Phase 0/1 behavior unchanged); without an audit log wired
+  /// in, void/reverse simply skip writing an audit entry; without a sync
+  /// queue, postWithin just doesn't enqueue anything; without [rollups],
+  /// `accountBalanceMinorUnits()`/`trialBalance()` fall back to scanning
+  /// `journal_lines` directly (correct either way — see PHASES.md
+  /// Phase 8, the rollup path is a performance optimization, not a
+  /// behavior change, which is exactly why the existing test suite is
+  /// this change's regression suite without needing to be rewritten).
+  LedgerRepository(this.db, [this.fiscalPeriods, this.auditLog, this.syncQueue, this.rollups]);
 
   final Database db;
   final FiscalPeriodRepository? fiscalPeriods;
   final AuditLogRepository? auditLog;
   final SyncQueueRepository? syncQueue;
+  final BalanceRollupRepository? rollups;
 
   Future<JournalEntry> post({
     required String businessId,
@@ -106,6 +112,16 @@ class LedgerRepository {
     await txn.insert(JournalEntry.tableName, entry.toMap());
     for (final line in lines) {
       await txn.insert(JournalLine.tableName, line.toMap());
+      if (rollups != null) {
+        await rollups!.applyLine(
+          txn,
+          businessId: businessId,
+          accountCode: line.accountCode,
+          debitDelta: line.debitMinorUnits,
+          creditDelta: line.creditMinorUnits,
+          partyUuid: line.partyUuid,
+        );
+      }
     }
 
     if (syncQueue != null) {
@@ -212,16 +228,38 @@ class LedgerRepository {
       throw ArgumentError('A void requires a reason — this is permanent audit trail text');
     }
 
-    await db.update(
-      JournalEntry.tableName,
-      {
-        'status': JournalEntryStatus.void_.name,
-        'description': 'VOIDED by $voidedBy: $reason'
-            '${original.description != null ? ' (was: ${original.description})' : ''}',
-      },
-      where: 'uuid = ?',
-      whereArgs: [original.uuid],
-    );
+    await db.transaction((txn) async {
+      await txn.update(
+        JournalEntry.tableName,
+        {
+          'status': JournalEntryStatus.void_.name,
+          'description': 'VOIDED by $voidedBy: $reason'
+              '${original.description != null ? ' (was: ${original.description})' : ''}',
+        },
+        where: 'uuid = ?',
+        whereArgs: [original.uuid],
+      );
+
+      // The one place a posting's effect needs to be un-counted after
+      // the fact — every rollup-backed balance read filters out void_
+      // entries by never having counted them in the first place, so the
+      // increments [post]/[postWithin] applied for this entry must be
+      // reversed here. Contrast with [reverse]: a reversed entry still
+      // counts (offset by its reversal entry's own increments), so no
+      // rollup adjustment happens there.
+      if (rollups != null) {
+        for (final line in original.lines) {
+          await rollups!.applyLine(
+            txn,
+            businessId: original.businessId,
+            accountCode: line.accountCode,
+            debitDelta: -line.debitMinorUnits,
+            creditDelta: -line.creditMinorUnits,
+            partyUuid: line.partyUuid,
+          );
+        }
+      }
+    });
 
     if (auditLog != null) {
       await auditLog!.log(
@@ -266,19 +304,25 @@ class LedgerRepository {
     );
   }
 
-  /// Closing balance for one account, computed with SQL-side aggregation
-  /// (SUM/GROUP BY) — the relational query Isar couldn't do cleanly. At
-  /// scale this should be served from a rollup table instead (see
-  /// PHASES.md Section 12); this direct aggregate query is fine through
-  /// Phase 1 and for "today's activity" drill-downs after that.
+  /// Closing balance for one account. Reads from the rollup tables when
+  /// [rollups] is wired in (PHASES.md Phase 8 — O(1) instead of scanning
+  /// every line ever posted to this account); falls back to the original
+  /// SQL-side aggregation otherwise. Both give the same answer — see the
+  /// constructor doc comment for why that equivalence is what makes this
+  /// a safe, behavior-preserving optimization.
   ///
   /// Posted AND reversed entries both actually happened — a reversed
   /// entry's effect is cancelled out by its offsetting reversal entry, not
-  /// by excluding it from the balance. Only void_ entries are excluded.
+  /// by excluding it from the balance. Only void_ entries are excluded
+  /// (and [void_] decrements the rollup to match, so both paths agree).
   Future<int> accountBalanceMinorUnits({
     required String businessId,
     required String accountCode,
   }) async {
+    if (rollups != null) {
+      return rollups!.accountBalance(businessId: businessId, accountCode: accountCode);
+    }
+
     final result = await db.rawQuery('''
       SELECT
         COALESCE(SUM(jl.debit_minor_units), 0) AS total_debit,
@@ -337,10 +381,11 @@ class LedgerRepository {
     ''', [businessId, JournalEntryStatus.void_.name, dimensionUuid]);
   }
 
-  /// Trial Balance: every account's Dr/Cr totals and net balance, in one
-  /// grouped query — the SQL aggregation Isar couldn't do cleanly (this is
-  /// the concrete payoff of the sqflite switch documented in PHASES.md
-  /// Phase 0).
+  /// Trial Balance: every account's Dr/Cr totals and net balance. Reads
+  /// from the rollup tables when [rollups] is wired in (PHASES.md Phase
+  /// 8 — also sidesteps the multi-tenant join hazard entirely, since the
+  /// rollup's primary key is already `(business_id, account_code)`);
+  /// falls back to the original grouped query otherwise.
   ///
   /// Joins journal_entries (business-scoped) before journal_lines, rather
   /// than joining lines on account_code directly — account codes are only
@@ -350,6 +395,10 @@ class LedgerRepository {
   /// "1010" account). Multi-tenant isolation has to hold at the query
   /// level, not just the UI level — see PHASES.md Section 16.
   Future<List<Map<String, Object?>>> trialBalance({required String businessId}) async {
+    if (rollups != null) {
+      return rollups!.trialBalance(businessId: businessId);
+    }
+
     return db.rawQuery('''
       SELECT a.code, a.name, a.type,
              COALESCE(SUM(jl.debit_minor_units), 0) AS total_debit,
