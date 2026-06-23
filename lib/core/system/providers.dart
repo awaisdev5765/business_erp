@@ -11,6 +11,8 @@ import '../activity/trip_expense_repository.dart';
 import '../activity/trip_repository.dart';
 import '../asset/operating_asset_repository.dart';
 import '../party/party_repository.dart';
+import '../sync/conflict_record_repository.dart';
+import '../sync/sync_queue_repository.dart';
 import '../tenant/business.dart';
 import '../transaction/payment_repository.dart';
 import '../../features/fishery/catch_repository.dart';
@@ -71,11 +73,22 @@ final auditLogRepositoryProvider = FutureProvider<AuditLogRepository>((ref) asyn
   return AuditLogRepository(db);
 });
 
+final syncQueueRepositoryProvider = FutureProvider<SyncQueueRepository>((ref) async {
+  final db = await ref.watch(databaseProvider.future);
+  return SyncQueueRepository(db);
+});
+
+final conflictRecordRepositoryProvider = FutureProvider<ConflictRecordRepository>((ref) async {
+  final db = await ref.watch(databaseProvider.future);
+  return ConflictRecordRepository(db);
+});
+
 final ledgerRepositoryProvider = FutureProvider<LedgerRepository>((ref) async {
   final db = await ref.watch(databaseProvider.future);
   final fiscalPeriods = await ref.watch(fiscalPeriodRepositoryProvider.future);
   final auditLog = await ref.watch(auditLogRepositoryProvider.future);
-  return LedgerRepository(db, fiscalPeriods, auditLog);
+  final syncQueue = await ref.watch(syncQueueRepositoryProvider.future);
+  return LedgerRepository(db, fiscalPeriods, auditLog, syncQueue);
 });
 
 final taxRateRepositoryProvider = FutureProvider<TaxRateRepository>((ref) async {

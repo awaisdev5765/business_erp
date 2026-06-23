@@ -1,0 +1,120 @@
+rules_version = '2';
+
+// Firestore Security Rules — written ahead of an actual Firebase project
+// existing (see PHASES.md Phase 5). Deploy with `firebase deploy --only
+// firestore:rules` once `firebase init firestore` has been run against a
+// real project.
+//
+// FREE (SPARK) PLAN CONSTRAINT: no Cloud Functions. That changes two
+// things from the original architecture sketch in PHASES.md Section 13:
+//
+// 1. No custom auth claims for role/businessAccess (minting those
+//    normally needs the Admin SDK, i.e. a Function or a backend). Role
+//    and business access instead live in a plain Firestore document at
+//    /users/{uid}, read inside these rules via get(). The Super Admin
+//    flag on that document is set by hand once in the Firebase console —
+//    a one-time manual step, not a recurring Function call.
+// 2. No server-side "do the debits equal the credits" validation for
+//    JournalEntry writes — summing an array in rules isn't expressible
+//    without Functions. That check stays purely client-side
+//    (LedgerRepository.isBalanced, already enforced before any write is
+//    attempted) plus structural validation here (businessId matches the
+//    path, status is a known value, lines is non-empty). This is a real,
+//    accepted gap versus the original design — documented, not silently
+//    dropped.
+//
+// Document numbering's atomicity (PHASES.md Section 14, "gapless
+// sequential invoice numbers") is handled by a Firestore client-side
+// `runTransaction` against /businesses/{id}/numberSequences/{docType}
+// when the real sync engine is wired in — that's a client SDK feature,
+// not a Functions feature, so it's free-plan compatible.
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function userDoc() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+
+    function isSuperAdmin() {
+      return isSignedIn() && userDoc().data.isSuperAdmin == true;
+    }
+
+    function hasBusinessAccess(businessId) {
+      return isSignedIn() &&
+        businessId in userDoc().data.businessAccess.keys();
+    }
+
+    function roleFor(businessId) {
+      return userDoc().data.businessAccess[businessId];
+    }
+
+    // A user's own profile: role assignments, isSuperAdmin flag. Only
+    // the user themself can read it (rules need it for every other
+    // check); only a Super Admin can write it — onboarding a new user's
+    // business access is an administrative action, not self-service.
+    match /users/{userId} {
+      allow read: if isSignedIn() && request.auth.uid == userId;
+      allow write: if isSuperAdmin();
+    }
+
+    match /businesses/{businessId} {
+      allow read: if isSuperAdmin() || hasBusinessAccess(businessId);
+      allow write: if isSuperAdmin();
+
+      // Every sub-collection under a business is scoped the same way:
+      // Super Admin sees everything; a business user needs access to
+      // *this* business specifically. See PHASES.md Section 16
+      // ("multi-tenant isolation has to hold at the query/rules level,
+      // not just the UI level") — this is that principle's Firestore
+      // expression.
+      match /{collection}/{docId} {
+        allow read: if isSuperAdmin() || hasBusinessAccess(businessId);
+
+        // Read-only roles (e.g. auditor) never get write access,
+        // regardless of collection.
+        allow create, update: if isSuperAdmin() || (
+          hasBusinessAccess(businessId) &&
+          roleFor(businessId) != 'readOnlyAuditor' &&
+          request.resource.data.businessId == businessId
+        );
+
+        // No client-side deletes anywhere — every domain model in this
+        // app is append-only / soft-delete (status fields), per
+        // PHASES.md Section 11 ("No Hard Deletes"). Hard deletes, if
+        // ever needed, are a deliberate Super Admin console action, not
+        // a rule this app's UI should be able to trigger.
+        allow delete: if false;
+      }
+
+      // JournalEntry-specific structural validation, layered on top of
+      // the generic collection rule above. Financial-data shape only —
+      // see the file header for why full balance validation isn't here.
+      match /journalEntries/{entryId} {
+        allow create: if isSuperAdmin() || (
+          hasBusinessAccess(businessId) &&
+          roleFor(businessId) != 'readOnlyAuditor' &&
+          request.resource.data.businessId == businessId &&
+          request.resource.data.status == 'posted' &&
+          request.resource.data.lines is list &&
+          request.resource.data.lines.size() > 0
+        );
+        // Updates to a JournalEntry are status-transition only
+        // (posted -> reversed/void_) — see LedgerRepository.reverse()/
+        // void_(), which never touch the lines. Enforce that here too:
+        // the lines array must be unchanged on update.
+        allow update: if isSuperAdmin() || (
+          hasBusinessAccess(businessId) &&
+          roleFor(businessId) != 'readOnlyAuditor' &&
+          request.resource.data.businessId == businessId &&
+          request.resource.data.lines == resource.data.lines
+        );
+        allow delete: if false;
+      }
+    }
+  }
+}

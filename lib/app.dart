@@ -18,6 +18,7 @@ import 'features/dashboard/dashboard_screen.dart';
 import 'features/spare_parts/inventory/product_list_screen.dart';
 import 'features/spare_parts/purchases/purchase_entry_screen.dart';
 import 'features/spare_parts/sales/sale_entry_screen.dart';
+import 'features/sync/sync_status_screen.dart';
 import 'features/transport/contracts_screen.dart';
 import 'features/transport/driver_performance_screen.dart';
 
@@ -66,6 +67,7 @@ class _AppShellState extends ConsumerState<_AppShell> {
     (icon: Icons.badge_outlined, label: 'Drivers'),
     (icon: Icons.description_outlined, label: 'Contracts'),
     (icon: Icons.alt_route_outlined, label: 'Haul Trips'),
+    (icon: Icons.sync_outlined, label: 'Sync Status'),
   ];
 
   Widget _buildBody() {
@@ -117,6 +119,8 @@ class _AppShellState extends ConsumerState<_AppShell> {
         return const ContractsScreen();
       case 17:
         return const TripsScreen(tripType: TripType.transport);
+      case 18:
+        return const SyncStatusScreen();
       default:
         return const DashboardScreen();
     }

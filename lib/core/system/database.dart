@@ -21,6 +21,8 @@ import '../activity/trip.dart';
 import '../activity/trip_expense.dart';
 import '../asset/operating_asset.dart';
 import '../party/party.dart';
+import '../sync/conflict_record.dart';
+import '../sync/sync_queue_item.dart';
 import '../tenant/business.dart';
 import '../transaction/payment.dart';
 import 'audit_log.dart';
@@ -115,4 +117,8 @@ Future<void> createSchema(DatabaseExecutor db) async {
   await db.execute(Contract.createIndexSql);
   await db.execute(TripIncome.createTableSql);
   await db.execute(TripIncome.createIndexSql);
+  await db.execute(SyncQueueItem.createTableSql);
+  await db.execute(SyncQueueItem.createIndexSql);
+  await db.execute(ConflictRecord.createTableSql);
+  await db.execute(ConflictRecord.createIndexSql);
 }

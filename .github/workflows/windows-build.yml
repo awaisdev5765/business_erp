@@ -1,0 +1,29 @@
+name: Windows build
+
+# Validates the Windows desktop build on every push. This exists because
+# development happens on macOS, which can produce/edit the windows/
+# platform files but cannot actually compile them — `flutter build
+# windows` only runs on a Windows host. This workflow is that missing
+# verification step, running on GitHub's free windows-latest runner.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+      - run: flutter pub get
+      - run: flutter analyze
+      - run: flutter test
+      - run: flutter build windows --release
+      - uses: actions/upload-artifact@v4
+        with:
+          name: business-erp-windows
+          path: build/windows/x64/runner/Release/

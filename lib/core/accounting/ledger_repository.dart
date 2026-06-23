@@ -1,6 +1,8 @@
 import 'package:sqflite/sqflite.dart';
 import 'package:uuid/uuid.dart';
 
+import '../sync/sync_queue_item.dart';
+import '../sync/sync_queue_repository.dart';
 import '../system/audit_log_repository.dart';
 import 'account.dart';
 import 'fiscal_period_repository.dart';
@@ -12,15 +14,18 @@ const _uuid = Uuid();
 /// financial data — modules call [post], never touch account balances
 /// directly. See PHASES.md Section 11.
 class LedgerRepository {
-  /// [fiscalPeriods] and [auditLog] are both optional — a business that
-  /// hasn't configured fiscal periods posts freely (Phase 0/1 behavior
-  /// unchanged), and without an audit log wired in, void/reverse simply
-  /// skip writing an audit entry rather than failing.
-  LedgerRepository(this.db, [this.fiscalPeriods, this.auditLog]);
+  /// [fiscalPeriods], [auditLog], and [syncQueue] are all optional — a
+  /// business that hasn't configured fiscal periods posts freely (Phase
+  /// 0/1 behavior unchanged); without an audit log wired in, void/reverse
+  /// simply skip writing an audit entry; without a sync queue, postWithin
+  /// just doesn't enqueue anything (no Firebase project to sync to yet —
+  /// see PHASES.md Phase 5).
+  LedgerRepository(this.db, [this.fiscalPeriods, this.auditLog, this.syncQueue]);
 
   final Database db;
   final FiscalPeriodRepository? fiscalPeriods;
   final AuditLogRepository? auditLog;
+  final SyncQueueRepository? syncQueue;
 
   Future<JournalEntry> post({
     required String businessId,
@@ -103,6 +108,16 @@ class LedgerRepository {
       await txn.insert(JournalLine.tableName, line.toMap());
     }
 
+    if (syncQueue != null) {
+      await syncQueue!.enqueue(
+        txn,
+        businessId: businessId,
+        entityType: 'JournalEntry',
+        entityId: uuid,
+        operation: SyncOperation.create,
+      );
+    }
+
     return entry;
   }
 
@@ -162,6 +177,18 @@ class LedgerRepository {
       );
     }
 
+    if (syncQueue != null) {
+      // The reversal entry already got its own enqueue inside post()
+      // above — this is for the *original* entry's status change.
+      await syncQueue!.enqueue(
+        db,
+        businessId: original.businessId,
+        entityType: 'JournalEntry',
+        entityId: original.uuid,
+        operation: SyncOperation.update,
+      );
+    }
+
     return reversal;
   }
 
@@ -204,6 +231,16 @@ class LedgerRepository {
         entityId: original.uuid,
         performedBy: voidedBy,
         details: reason,
+      );
+    }
+
+    if (syncQueue != null) {
+      await syncQueue!.enqueue(
+        db,
+        businessId: original.businessId,
+        entityType: 'JournalEntry',
+        entityId: original.uuid,
+        operation: SyncOperation.update,
       );
     }
   }

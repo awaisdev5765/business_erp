@@ -85,16 +85,73 @@ automatically (see `lib/core/system/database.dart`).
 
 **Architectural payoff realized:** Phase 4 needed zero new tables for OperatingAsset, Party, or Trip, and zero new expense-posting logic for TripExpense — only `TripIncome` and `Contract` were genuinely new, because Transport's revenue shape (a flat trip fee) differs from Fishery's (weight × price). This is the reuse the "unified entity" design in PHASES.md Section 6/12 was meant to produce.
 
-## Phase 5 — Sync + multi-device
-- [ ] Wire Firebase (Auth, Firestore, Cloud Functions, FCM) per the
-      sync architecture: Isar/SQL local-first, Firestore = auth + backup +
-      sync + notifications only, never the live query target
-- [ ] Cloud Function: atomic sequence number issuance, server-side balance validation
-- [ ] Upload/download sync engine + Sync Queue + retry/backoff
-- [ ] Manual Conflict Resolution UI for financial master-data conflicts
-- [ ] Multi-tenant Firestore Security Rules
-- [ ] Windows packaging/installer
-- [ ] Full offline QA pass across all three verticals
+## Phase 5 — Sync + multi-device (PARTIAL — blocked on a real Firebase project)
+
+**Decision: free Spark plan, no Cloud Functions.** This changes the
+architecture from the original sketch in two ways, both documented at
+the top of `firestore.rules`:
+1. No custom auth claims (those need the Admin SDK/a Function) — role
+   and business access live in a plain `/users/{uid}` Firestore
+   document instead, read via `get()` inside rules. Super Admin status
+   on that doc is set once by hand in the console.
+2. No server-side "debits == credits" validation for JournalEntry
+   writes — summing an array isn't expressible in rules without
+   Functions. Balance validation stays client-side
+   (`LedgerRepository.isBalanced`, already enforced before any write);
+   rules add structural/ownership checks only. Real, accepted gap —
+   not silently dropped.
+3. Atomic document numbering (gapless invoice numbers) will use a
+   Firestore client-side `runTransaction` against a counter document
+   instead of a Cloud Function — that's a client SDK feature, free-plan
+   compatible, not yet implemented since there's no project to run it
+   against.
+
+**Built without needing live credentials (DONE):**
+- [x] `SyncQueueItem` outbox table + `SyncQueueRepository` — the local
+      upload queue every synced entity will go through. Wired into
+      `LedgerRepository.postWithin()`/`reverse()`/`void_()` so every
+      JournalEntry write enqueues itself in the same transaction as the
+      write — opt-in via an optional constructor arg, same pattern as
+      `fiscalPeriods`/`auditLog`.
+- [x] `ConflictResolutionPolicy` — pure function deciding auto-merge
+      (last-write-wins on non-sensitive fields) vs. manual resolution
+      (any sensitive field, e.g. credit limit/tax rate, differs) —
+      fully unit-tested with constructed field snapshots, no database or
+      network needed. `ConflictRecord`/`ConflictRecordRepository`
+      persist the "needs manual resolution" cases for the UI queue.
+- [x] `SyncStatusScreen` — the Manual Conflict Resolution UI's read
+      half: queue depth (pending/failed/synced), unresolved conflicts.
+      Nothing populates this yet beyond what local posting enqueues —
+      there's no upload worker or remote to actually sync with.
+- [x] `firestore.rules` — multi-tenant isolation (Super Admin vs.
+      per-business access via `/users/{uid}.businessAccess`), no
+      hard-delete rule anywhere, JournalEntry structural validation.
+      Written, not deployed — needs `firebase init firestore` against a
+      real project first.
+- [x] Windows app metadata updated (`Business ERP` display name/window
+      title instead of the default `business_erp`); added
+      `.github/workflows/windows-build.yml` so the Windows build is
+      validated by GitHub's free `windows-latest` CI runner on every
+      push — development happens on macOS, which can edit the
+      `windows/` platform files but cannot compile them; `flutter build
+      windows` only runs on a Windows host. This is the verification
+      step that fills that gap, but it only runs once this repo is
+      pushed to GitHub (no remote configured yet).
+- [x] Tests: 11 new (4 sync-queue, 7 conflict-resolution), 42 total —
+      all local, no Firebase needed.
+
+**Blocked on you creating a Firebase project + running
+`flutterfire configure`:**
+- [ ] Wire `firebase_core`/`firebase_auth`/`cloud_firestore` into the app
+- [ ] Real upload/download sync worker draining `SyncQueueItem`
+- [ ] Deploy `firestore.rules`, create the `/users/{uid}` documents
+- [ ] Firestore client-transaction-based document numbering
+- [ ] FCM notifications
+- [ ] Full offline QA pass *with* a real device-to-device sync scenario
+      (today's offline QA is "does it work with zero network," which
+      every existing test already covers — the multi-device merge
+      scenario needs an actual second client talking to the same
+      project)
 
 ## Phase 6+ — see full roadmap
 Multi-currency, Fixed Assets/Depreciation, Approval workflows, Payroll,
