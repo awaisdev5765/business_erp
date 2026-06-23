@@ -2,14 +2,19 @@ import 'package:sqflite/sqflite.dart';
 import 'package:uuid/uuid.dart';
 
 import '../accounting/journal_entry.dart';
+import '../sync/sync_queue_item.dart';
+import '../sync/sync_queue_repository.dart';
 import 'party.dart';
 
 const _uuid = Uuid();
 
 class PartyRepository {
-  PartyRepository(this.db);
+  /// [syncQueue] is optional, same opt-in pattern as elsewhere — without
+  /// one, Party creation/updates simply aren't queued for sync.
+  PartyRepository(this.db, [this.syncQueue]);
 
   final Database db;
+  final SyncQueueRepository? syncQueue;
 
   Future<Party> create({
     required String businessId,
@@ -32,10 +37,28 @@ class PartyRepository {
       updatedAt: now,
     );
     await db.insert(Party.tableName, party.toMap());
+    if (syncQueue != null) {
+      await syncQueue!.enqueue(
+        db,
+        businessId: businessId,
+        entityType: 'Party',
+        entityId: party.uuid,
+        operation: SyncOperation.create,
+      );
+    }
     return party;
   }
 
   Future<void> update(Party party) async {
+    if (syncQueue != null) {
+      await syncQueue!.enqueue(
+        db,
+        businessId: party.businessId,
+        entityType: 'Party',
+        entityId: party.uuid,
+        operation: SyncOperation.update,
+      );
+    }
     await db.update(
       Party.tableName,
       party.toMap(),

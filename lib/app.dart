@@ -1,4 +1,7 @@
+import 'dart:async';
+
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -51,8 +54,61 @@ class AppShell extends ConsumerStatefulWidget {
   ConsumerState<AppShell> createState() => _AppShellState();
 }
 
-class _AppShellState extends ConsumerState<AppShell> {
+class _AppShellState extends ConsumerState<AppShell> with WidgetsBindingObserver {
   int _selectedIndex = 0;
+  Timer? _syncTimer;
+  StreamSubscription<RemoteMessage>? _fcmSubscription;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _backgroundSync();
+    // Periodic background sync while the app is open — see
+    // FirestoreSyncService.syncAll. 3 minutes balances "reasonably
+    // fresh" against not hammering Firestore reads on the free plan.
+    _syncTimer = Timer.periodic(const Duration(minutes: 3), (_) => _backgroundSync());
+
+    // Foreground messages don't show a system notification automatically
+    // (only background/terminated does) — show an in-app SnackBar
+    // instead. See FcmService's doc comment: nothing in this app sends
+    // these yet without Cloud Functions; this just displays one if
+    // something does (a manual Console-composed message, for instance).
+    _fcmSubscription = FirebaseMessaging.onMessage.listen((message) {
+      final text = message.notification?.title ?? message.notification?.body;
+      if (text != null && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _syncTimer?.cancel();
+    _fcmSubscription?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _backgroundSync();
+    }
+  }
+
+  Future<void> _backgroundSync() async {
+    try {
+      final businessId = await ref.read(currentBusinessIdProvider.future);
+      final service = await ref.read(firestoreSyncServiceProvider.future);
+      await service.syncAll(businessId);
+    } catch (_) {
+      // Silent — offline or a transient Firestore error is normal and
+      // expected here; the Sync Status screen surfaces real failures
+      // (queue items move to `failed` with the error attached), this
+      // background tick just shouldn't crash the app over it.
+    }
+  }
 
   static const _destinations = [
     (icon: Icons.dashboard_outlined, label: 'Dashboard'),

@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:uuid/uuid.dart';
@@ -17,6 +18,7 @@ import '../activity/trip_repository.dart';
 import '../asset/operating_asset_repository.dart';
 import '../identity/user_profile.dart';
 import '../identity/user_profile_repository.dart';
+import '../notifications/fcm_service.dart';
 import '../party/party_repository.dart';
 import '../sync/conflict_record_repository.dart';
 import '../sync/firestore_sync_service.dart';
@@ -101,6 +103,10 @@ const currentDeviceId = 'desktop-1';
 
 final firestoreProvider = Provider<FirebaseFirestore>((ref) => FirebaseFirestore.instance);
 
+final fcmServiceProvider = Provider<FcmService>((ref) {
+  return FcmService(FirebaseMessaging.instance, ref.watch(firestoreProvider));
+});
+
 final userProfileRepositoryProvider = Provider<UserProfileRepository>((ref) {
   return UserProfileRepository(ref.watch(firestoreProvider));
 });
@@ -120,7 +126,14 @@ final firestoreSyncServiceProvider = FutureProvider<FirestoreSyncService>((ref) 
   final firestore = ref.watch(firestoreProvider);
   final syncQueue = await ref.watch(syncQueueRepositoryProvider.future);
   final ledger = await ref.watch(ledgerRepositoryProvider.future);
-  return FirestoreSyncService(db: db, firestore: firestore, syncQueue: syncQueue, ledger: ledger);
+  final conflictRecords = await ref.watch(conflictRecordRepositoryProvider.future);
+  return FirestoreSyncService(
+    db: db,
+    firestore: firestore,
+    syncQueue: syncQueue,
+    ledger: ledger,
+    conflictRecords: conflictRecords,
+  );
 });
 
 final fiscalPeriodRepositoryProvider = FutureProvider<FiscalPeriodRepository>((ref) async {
@@ -180,12 +193,14 @@ final bankAccountRepositoryProvider = FutureProvider<BankAccountRepository>((ref
 
 final productRepositoryProvider = FutureProvider<ProductRepository>((ref) async {
   final db = await ref.watch(databaseProvider.future);
-  return ProductRepository(db);
+  final syncQueue = await ref.watch(syncQueueRepositoryProvider.future);
+  return ProductRepository(db, syncQueue);
 });
 
 final partyRepositoryProvider = FutureProvider<PartyRepository>((ref) async {
   final db = await ref.watch(databaseProvider.future);
-  return PartyRepository(db);
+  final syncQueue = await ref.watch(syncQueueRepositoryProvider.future);
+  return PartyRepository(db, syncQueue);
 });
 
 final numberSequenceServiceProvider = FutureProvider<NumberSequenceService>((ref) async {

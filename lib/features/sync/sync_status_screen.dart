@@ -6,11 +6,10 @@ import '../../core/sync/sync_queue_item.dart';
 import '../../core/system/providers.dart';
 
 /// Shows what's waiting to sync and any conflicts needing a decision,
-/// plus a manual "Sync Now" trigger (`FirestoreSyncService.uploadPending`).
-/// There's no automatic background worker yet — every posted JournalEntry
-/// queues here and waits for either a manual sync or (future work) a
-/// periodic/foreground-triggered upload. Download/merge from other
-/// devices isn't wired in yet either — see PHASES.md Phase 5.
+/// plus a manual "Sync Now" trigger (`FirestoreSyncService.syncAll` —
+/// upload then download). A periodic background trigger also runs from
+/// `AppShell` while the app is open; this button is for an immediate,
+/// user-visible sync rather than waiting for the next tick.
 class SyncStatusScreen extends ConsumerStatefulWidget {
   const SyncStatusScreen({super.key});
 
@@ -50,10 +49,15 @@ class _SyncStatusScreenState extends ConsumerState<SyncStatusScreen> {
     try {
       final businessId = await ref.read(currentBusinessIdProvider.future);
       final service = await ref.read(firestoreSyncServiceProvider.future);
-      final count = await service.uploadPending(businessId);
+      final result = await service.syncAll(businessId);
       await _load();
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Synced $count item(s)')));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(
+            'Pulled ${result.inserted} new, ${result.statusUpdated} updated'
+            '${result.conflicts > 0 ? ', ${result.conflicts} conflict(s)' : ''}',
+          ),
+        ));
       }
     } catch (e) {
       if (mounted) {

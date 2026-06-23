@@ -59,10 +59,15 @@ dependencies:
   firebase_core: ^3.8.0
   firebase_auth: ^5.3.3
   cloud_firestore: ^5.5.0
+  firebase_messaging: ^15.1.6
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
+
+  # Fakes cloud_firestore in-memory for testing the sync engine without
+  # a live project/emulator — see test/firestore_sync_test.dart.
+  fake_cloud_firestore: ^3.1.0
 
   # The "flutter_lints" package below contains a set of recommended lints to
   # encourage good coding practices. The lint set provided by the package is

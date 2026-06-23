@@ -85,7 +85,7 @@ automatically (see `lib/core/system/database.dart`).
 
 **Architectural payoff realized:** Phase 4 needed zero new tables for OperatingAsset, Party, or Trip, and zero new expense-posting logic for TripExpense — only `TripIncome` and `Contract` were genuinely new, because Transport's revenue shape (a flat trip fee) differs from Fishery's (weight × price). This is the reuse the "unified entity" design in PHASES.md Section 6/12 was meant to produce.
 
-## Phase 5 — Sync + multi-device (PARTIAL — live Firebase project connected)
+## Phase 5 — Sync + multi-device (DONE)
 
 **Firebase project `buyappsc` is now connected** (`flutterfire configure`
 ran for Android/iOS/macOS/Web/Windows — `lib/firebase_options.dart`,
@@ -164,15 +164,10 @@ the top of `firestore.rules`:
       a hardcoded `'owner'` constant; `currentDeviceId` is still a
       constant — true per-device identifiers are deferred until there
       are actually two devices syncing the same business to test against
-- [x] `FirestoreSyncService.uploadPending()` — the real upload half:
-      reads `SyncQueueItem`s, fetches each `JournalEntry` (with lines)
-      from local SQL, claims a sequence number via a Firestore
-      `runTransaction` against `/businesses/{id}/numberSequences/{docType}`
-      on first sync (the free-plan substitute for a Cloud Function),
-      writes the document to `/businesses/{id}/journalEntries/{uuid}`,
-      and marks the queue item synced/failed. Triggered manually via a
-      "Sync Now" button on `SyncStatusScreen` — no background/periodic
-      worker yet
+- [x] `FirestoreSyncService.uploadPending()` — fetches each queued entity
+      from local SQL and writes it to Firestore, claiming a sequence
+      number via a Firestore `runTransaction` for JournalEntries on
+      first sync (the free-plan substitute for a Cloud Function)
 - [x] `firestore.rules` deployed to `buyappsc`
       (`firebase deploy --only firestore:rules` — compiled and released
       successfully)
@@ -182,18 +177,47 @@ the top of `firestore.rules`:
       `AndroidManifest.xml` (the Google Services Gradle plugin was
       already wired by `flutterfire configure`)
 
-**Still pending:**
-- [ ] Download/merge sync (pulling another device's changes) — only the
-      upload half exists; real multi-device conflict detection needs
-      this
-- [ ] Background/periodic sync trigger (currently manual "Sync Now" only)
-- [ ] Sync for entities other than `JournalEntry` (Party, Product, etc.)
-      — same mechanical `SyncQueueRepository.enqueue()` pattern, not yet
-      applied to every repository
-- [ ] FCM notifications
-- [ ] A true multi-device sync QA pass (today's testing is "does it work
-      with zero network," which the existing 42 tests already cover —
-      proving the upload path against a second real client is next)
+**Download/merge + remaining items (DONE):**
+- [x] `FirestoreSyncService.downloadAndMerge()` — pulls every
+      JournalEntry for a business from Firestore. A JournalEntry's lines
+      are immutable once posted (PHASES.md Section 11), so the only
+      thing two devices' copies can actually disagree on is `status`. If
+      local is still `posted` (hasn't independently transitioned),
+      safely adopts the remote status; if local already transitioned to
+      a *different* terminal status than remote, records a real conflict
+      via `ConflictRecordRepository` rather than guessing which side is
+      right. `syncAll()` runs upload then download together — the one
+      call both the manual "Sync Now" button and the background trigger
+      use.
+- [x] Background sync: a `Timer.periodic` (3 min) in `AppShell` plus an
+      `AppLifecycleState.resumed` trigger, both calling `syncAll()`
+      silently (errors are expected when offline — the queue's
+      pending/failed state is the visible signal, not a crash)
+- [x] Sync extended to `Party` and `Product` (`PartyRepository.create/
+      update`, `ProductRepository.create` now enqueue, same opt-in
+      `SyncQueueRepository?` constructor-arg pattern as everywhere else).
+      **Known gap:** stock-adjusting operations (Sale/Purchase) don't
+      re-enqueue a Product, so a synced product's `stockQuantity`
+      reflects creation time, not live stock — flagged in code, not
+      silently wrong. Other entities (Sale, Purchase, OperatingAsset,
+      Trip, etc.) aren't wired yet — same mechanical extension.
+- [x] FCM: `FcmService` registers the device token to `/users/{uid}` on
+      sign-in and listens for foreground messages (shown as a SnackBar).
+      **Real limitation, not glossed over:** without Cloud Functions,
+      nothing in this app can *send* a push automatically — only a
+      human composing one in the Firebase Console, or a future external
+      server calling the FCM HTTP v1 API, or upgrading to Blaze later
+      for a Function trigger (the natural one being "notify the Manager
+      when a Sale needs approval" — Phase 6's Approval Workflow). iOS
+      also still needs an APNs key uploaded to the Firebase Console via
+      an Apple Developer account — a manual step outside this codebase.
+- [x] Multi-device sync QA pass — `test/firestore_sync_test.dart` uses
+      `fake_cloud_firestore` to simulate two devices (two separate local
+      SQLite databases) sharing one backend: entry propagation, a safe
+      status-adoption case, and a genuine two-sided-conflict case, all
+      passing without needing a live project or emulator.
+- [x] Tests: 7 more new (3 multi-device sync, 4 Party/Product sync), 60
+      total — all passing, `flutter analyze` clean.
 
 ## Phase 6 — Fixed Assets/Depreciation, Approval Workflows, Business Switcher (DONE)
 Splitting the original "Phase 6+ roadmap" bucket into concrete phases.

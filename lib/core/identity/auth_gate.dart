@@ -49,10 +49,19 @@ class AuthGate extends ConsumerWidget {
   Future<UserProfile> _ensureProfile(WidgetRef ref, User user) async {
     final businessId = await ref.read(currentBusinessIdProvider.future);
     final repo = ref.read(userProfileRepositoryProvider);
-    return repo.ensureProfile(
+    final profile = await repo.ensureProfile(
       uid: user.uid,
       email: user.email ?? user.uid,
       localBusinessId: businessId,
     );
+
+    // Best-effort — a denied notification permission or a platform
+    // without FCM support shouldn't block sign-in.
+    try {
+      final fcm = ref.read(fcmServiceProvider);
+      await fcm.registerToken(user.uid);
+    } catch (_) {}
+
+    return profile;
   }
 }

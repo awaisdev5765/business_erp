@@ -1,14 +1,18 @@
 import 'package:sqflite/sqflite.dart';
 import 'package:uuid/uuid.dart';
 
+import '../../../core/sync/sync_queue_item.dart';
+import '../../../core/sync/sync_queue_repository.dart';
 import 'product.dart';
 
 const _uuid = Uuid();
 
 class ProductRepository {
-  ProductRepository(this.db);
+  /// [syncQueue] is optional, same opt-in pattern as elsewhere.
+  ProductRepository(this.db, [this.syncQueue]);
 
   final Database db;
+  final SyncQueueRepository? syncQueue;
 
   Future<Product> create({
     required String businessId,
@@ -39,6 +43,15 @@ class ProductRepository {
       updatedAt: now,
     );
     await db.insert(Product.tableName, product.toMap());
+    if (syncQueue != null) {
+      await syncQueue!.enqueue(
+        db,
+        businessId: businessId,
+        entityType: 'Product',
+        entityId: product.uuid,
+        operation: SyncOperation.create,
+      );
+    }
     return product;
   }
 
