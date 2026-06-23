@@ -5,13 +5,12 @@ import '../../core/sync/conflict_record.dart';
 import '../../core/sync/sync_queue_item.dart';
 import '../../core/system/providers.dart';
 
-/// Shows what's waiting to sync and any conflicts needing a decision.
-/// Until a real Firebase project exists and the upload worker is wired
-/// in (see PHASES.md Phase 5), nothing ever drains the queue this screen
-/// reads from — every posted JournalEntry just accumulates here as
-/// "pending" forever. That's expected for now; this screen is the UI
-/// half of the sync engine, built ahead of the half that needs live
-/// credentials.
+/// Shows what's waiting to sync and any conflicts needing a decision,
+/// plus a manual "Sync Now" trigger (`FirestoreSyncService.uploadPending`).
+/// There's no automatic background worker yet — every posted JournalEntry
+/// queues here and waits for either a manual sync or (future work) a
+/// periodic/foreground-triggered upload. Download/merge from other
+/// devices isn't wired in yet either — see PHASES.md Phase 5.
 class SyncStatusScreen extends ConsumerStatefulWidget {
   const SyncStatusScreen({super.key});
 
@@ -22,6 +21,7 @@ class SyncStatusScreen extends ConsumerStatefulWidget {
 class _SyncStatusScreenState extends ConsumerState<SyncStatusScreen> {
   List<SyncQueueItem>? _items;
   List<ConflictRecord>? _conflicts;
+  bool _syncing = false;
 
   @override
   void initState() {
@@ -45,6 +45,25 @@ class _SyncStatusScreenState extends ConsumerState<SyncStatusScreen> {
     }
   }
 
+  Future<void> _syncNow() async {
+    setState(() => _syncing = true);
+    try {
+      final businessId = await ref.read(currentBusinessIdProvider.future);
+      final service = await ref.read(firestoreSyncServiceProvider.future);
+      final count = await service.uploadPending(businessId);
+      await _load();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Synced $count item(s)')));
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Sync failed: $e')));
+      }
+    } finally {
+      if (mounted) setState(() => _syncing = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final items = _items;
@@ -59,24 +78,25 @@ class _SyncStatusScreenState extends ConsumerState<SyncStatusScreen> {
     final synced = items.where((i) => i.status == SyncQueueStatus.synced).length;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Sync Status')),
+      appBar: AppBar(
+        title: const Text('Sync Status'),
+        actions: [
+          Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: _syncing
+                ? const Padding(
+                    padding: EdgeInsets.all(12),
+                    child: SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)),
+                  )
+                : IconButton(icon: const Icon(Icons.sync), tooltip: 'Sync Now', onPressed: _syncNow),
+          ),
+        ],
+      ),
       body: RefreshIndicator(
         onRefresh: _load,
         child: ListView(
           padding: const EdgeInsets.all(16),
           children: [
-            if (conflicts.isEmpty)
-              const Card(
-                color: Colors.blue,
-                child: Padding(
-                  padding: EdgeInsets.all(12),
-                  child: Text(
-                    'No Firebase project connected yet — everything below is local-only. '
-                    'Records queue up here and will upload automatically once sync is wired in.',
-                    style: TextStyle(color: Colors.white),
-                  ),
-                ),
-              ),
             const SizedBox(height: 16),
             Wrap(
               spacing: 16,

@@ -53,6 +53,13 @@ dependencies:
   # Identifiers and value types
   uuid: ^4.5.1
 
+  # Firebase — auth + backup/sync layer only, never the live query target
+  # for transactional screens (PHASES.md Section 14). Free Spark plan: no
+  # Cloud Functions (PHASES.md Phase 5 note).
+  firebase_core: ^3.8.0
+  firebase_auth: ^5.3.3
+  cloud_firestore: ^5.5.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

@@ -85,7 +85,13 @@ automatically (see `lib/core/system/database.dart`).
 
 **Architectural payoff realized:** Phase 4 needed zero new tables for OperatingAsset, Party, or Trip, and zero new expense-posting logic for TripExpense — only `TripIncome` and `Contract` were genuinely new, because Transport's revenue shape (a flat trip fee) differs from Fishery's (weight × price). This is the reuse the "unified entity" design in PHASES.md Section 6/12 was meant to produce.
 
-## Phase 5 — Sync + multi-device (PARTIAL — blocked on a real Firebase project)
+## Phase 5 — Sync + multi-device (PARTIAL — live Firebase project connected)
+
+**Firebase project `buyappsc` is now connected** (`flutterfire configure`
+ran for Android/iOS/macOS/Web/Windows — `lib/firebase_options.dart`,
+`google-services.json`, `GoogleService-Info.plist` all generated).
+`firestore.rules` is deployed (`firebase deploy --only firestore:rules`
+succeeded against the live project).
 
 **Decision: free Spark plan, no Cloud Functions.** This changes the
 architecture from the original sketch in two ways, both documented at
@@ -138,20 +144,56 @@ the top of `firestore.rules`:
       step that fills that gap, but it only runs once this repo is
       pushed to GitHub (no remote configured yet).
 - [x] Tests: 11 new (4 sync-queue, 7 conflict-resolution), 42 total —
-      all local, no Firebase needed.
+      all local, no Firebase needed (still true: these test the pure
+      logic, not live Firestore).
 
-**Blocked on you creating a Firebase project + running
-`flutterfire configure`:**
-- [ ] Wire `firebase_core`/`firebase_auth`/`cloud_firestore` into the app
-- [ ] Real upload/download sync worker draining `SyncQueueItem`
-- [ ] Deploy `firestore.rules`, create the `/users/{uid}` documents
-- [ ] Firestore client-transaction-based document numbering
+**Wired against the live project (DONE):**
+- [x] `firebase_core`/`firebase_auth`/`cloud_firestore` added and
+      initialized in `main.dart` via `DefaultFirebaseOptions.currentPlatform`
+- [x] `UserProfile`/`UserProfileRepository` — Firestore-only model at
+      `/users/{uid}` (never local SQL, since this is exactly what
+      `firestore.rules` reads via `get()`). The first-ever user to sign
+      in is auto-provisioned as Super Admin with `businessAdmin` access
+      to the locally-seeded business — matches "one owner, several
+      businesses" from the original brief; there's no separate
+      invite/onboarding flow for additional team members yet
+- [x] `LoginScreen` (email/password sign in + register toggle) and
+      `AuthGate` (gates `AppShell` on `FirebaseAuth.authStateChanges()`,
+      ensures the `/users/{uid}` profile exists before showing the app)
+- [x] `currentUser` now reads the real signed-in user's email instead of
+      a hardcoded `'owner'` constant; `currentDeviceId` is still a
+      constant — true per-device identifiers are deferred until there
+      are actually two devices syncing the same business to test against
+- [x] `FirestoreSyncService.uploadPending()` — the real upload half:
+      reads `SyncQueueItem`s, fetches each `JournalEntry` (with lines)
+      from local SQL, claims a sequence number via a Firestore
+      `runTransaction` against `/businesses/{id}/numberSequences/{docType}`
+      on first sync (the free-plan substitute for a Cloud Function),
+      writes the document to `/businesses/{id}/journalEntries/{uuid}`,
+      and marks the queue item synced/failed. Triggered manually via a
+      "Sync Now" button on `SyncStatusScreen` — no background/periodic
+      worker yet
+- [x] `firestore.rules` deployed to `buyappsc`
+      (`firebase deploy --only firestore:rules` — compiled and released
+      successfully)
+- [x] Platform plumbing for live network calls: macOS sandbox
+      entitlements (`com.apple.security.network.client`) added to both
+      Debug and Release; Android `INTERNET` permission added to
+      `AndroidManifest.xml` (the Google Services Gradle plugin was
+      already wired by `flutterfire configure`)
+
+**Still pending:**
+- [ ] Download/merge sync (pulling another device's changes) — only the
+      upload half exists; real multi-device conflict detection needs
+      this
+- [ ] Background/periodic sync trigger (currently manual "Sync Now" only)
+- [ ] Sync for entities other than `JournalEntry` (Party, Product, etc.)
+      — same mechanical `SyncQueueRepository.enqueue()` pattern, not yet
+      applied to every repository
 - [ ] FCM notifications
-- [ ] Full offline QA pass *with* a real device-to-device sync scenario
-      (today's offline QA is "does it work with zero network," which
-      every existing test already covers — the multi-device merge
-      scenario needs an actual second client talking to the same
-      project)
+- [ ] A true multi-device sync QA pass (today's testing is "does it work
+      with zero network," which the existing 42 tests already cover —
+      proving the upload path against a second real client is next)
 
 ## Phase 6+ — see full roadmap
 Multi-currency, Fixed Assets/Depreciation, Approval workflows, Payroll,

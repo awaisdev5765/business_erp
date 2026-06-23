@@ -1,3 +1,5 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:uuid/uuid.dart';
@@ -10,8 +12,10 @@ import '../accounting/tax_rate_repository.dart';
 import '../activity/trip_expense_repository.dart';
 import '../activity/trip_repository.dart';
 import '../asset/operating_asset_repository.dart';
+import '../identity/user_profile_repository.dart';
 import '../party/party_repository.dart';
 import '../sync/conflict_record_repository.dart';
+import '../sync/firestore_sync_service.dart';
 import '../sync/sync_queue_repository.dart';
 import '../tenant/business.dart';
 import '../transaction/payment_repository.dart';
@@ -60,8 +64,31 @@ final currentBusinessIdProvider = FutureProvider<String>((ref) async {
   return business.uuid;
 });
 
-const currentUser = 'owner';
+/// The signed-in user's email (falling back to their uid). Read fresh on
+/// every call rather than cached, since sign-in/sign-out changes it.
+String get currentUser =>
+    FirebaseAuth.instance.currentUser?.email ?? FirebaseAuth.instance.currentUser?.uid ?? 'unknown';
+
+/// A stable per-device identifier would normally come from something
+/// like `device_info_plus`; this stays a constant for now — true
+/// multi-device differentiation matters once there are actually two
+/// devices syncing the same business, which needs the rest of Phase 5's
+/// download/merge half first. Tracked as a known gap, not forgotten.
 const currentDeviceId = 'desktop-1';
+
+final firestoreProvider = Provider<FirebaseFirestore>((ref) => FirebaseFirestore.instance);
+
+final userProfileRepositoryProvider = Provider<UserProfileRepository>((ref) {
+  return UserProfileRepository(ref.watch(firestoreProvider));
+});
+
+final firestoreSyncServiceProvider = FutureProvider<FirestoreSyncService>((ref) async {
+  final db = await ref.watch(databaseProvider.future);
+  final firestore = ref.watch(firestoreProvider);
+  final syncQueue = await ref.watch(syncQueueRepositoryProvider.future);
+  final ledger = await ref.watch(ledgerRepositoryProvider.future);
+  return FirestoreSyncService(db: db, firestore: firestore, syncQueue: syncQueue, ledger: ledger);
+});
 
 final fiscalPeriodRepositoryProvider = FutureProvider<FiscalPeriodRepository>((ref) async {
   final db = await ref.watch(databaseProvider.future);

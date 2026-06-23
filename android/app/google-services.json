@@ -1,0 +1,39 @@
+{
+  "project_info": {
+    "project_number": "457284502893",
+    "project_id": "buyappsc",
+    "storage_bucket": "buyappsc.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:457284502893:android:e750457b9b54198d2b4664",
+        "android_client_info": {
+          "package_name": "com.airtechsolutions.business_erp"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "457284502893-3ovq2vgikmh2aouhhosrsj255rr7o5tj.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCkcrKv4bM2gCRqwDl9j5AGfGjqPxqgeOc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "457284502893-3ovq2vgikmh2aouhhosrsj255rr7o5tj.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

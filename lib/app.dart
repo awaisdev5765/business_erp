@@ -1,8 +1,10 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'core/activity/trip.dart';
 import 'core/asset/operating_asset.dart';
+import 'core/identity/auth_gate.dart';
 import 'core/party/party.dart';
 import 'core/party/party_list_screen.dart';
 import 'core/system/providers.dart';
@@ -33,19 +35,19 @@ class BusinessErpApp extends StatelessWidget {
       darkTheme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.indigo, brightness: Brightness.dark),
       ),
-      home: const _AppShell(),
+      home: const AuthGate(child: AppShell()),
     );
   }
 }
 
-class _AppShell extends ConsumerStatefulWidget {
-  const _AppShell();
+class AppShell extends ConsumerStatefulWidget {
+  const AppShell({super.key});
 
   @override
-  ConsumerState<_AppShell> createState() => _AppShellState();
+  ConsumerState<AppShell> createState() => _AppShellState();
 }
 
-class _AppShellState extends ConsumerState<_AppShell> {
+class _AppShellState extends ConsumerState<AppShell> {
   int _selectedIndex = 0;
 
   static const _destinations = [
@@ -140,9 +142,19 @@ class _AppShellState extends ConsumerState<_AppShell> {
               selectedIndex: _selectedIndex,
               onDestinationSelected: (i) => setState(() => _selectedIndex = i),
               labelType: NavigationRailLabelType.all,
-              leading: const Padding(
-                padding: EdgeInsets.symmetric(vertical: 16),
-                child: Icon(Icons.business, size: 32),
+              leading: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                child: Column(
+                  children: [
+                    const Icon(Icons.business, size: 32),
+                    const SizedBox(height: 8),
+                    IconButton(
+                      icon: const Icon(Icons.logout, size: 18),
+                      tooltip: 'Sign out',
+                      onPressed: () => FirebaseAuth.instance.signOut(),
+                    ),
+                  ],
+                ),
               ),
               destinations: _destinations
                   .map((d) => NavigationRailDestination(icon: Icon(d.icon), label: Text(d.label)))
