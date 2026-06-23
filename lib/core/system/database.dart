@@ -6,17 +6,19 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import '../../features/fishery/fish_category.dart';
 import '../../features/fishery/fish_sale.dart';
-import '../../features/fishery/trip_expense.dart';
 import '../../features/spare_parts/inventory/category.dart';
 import '../../features/spare_parts/inventory/product.dart';
 import '../../features/spare_parts/purchases/purchase.dart';
 import '../../features/spare_parts/sales/sale.dart';
+import '../../features/transport/contract.dart';
+import '../../features/transport/trip_income.dart';
 import '../accounting/account.dart';
 import '../accounting/bank_account.dart';
 import '../accounting/fiscal_period.dart';
 import '../accounting/journal_entry.dart';
 import '../accounting/tax_rate.dart';
 import '../activity/trip.dart';
+import '../activity/trip_expense.dart';
 import '../asset/operating_asset.dart';
 import '../party/party.dart';
 import '../tenant/business.dart';
@@ -109,4 +111,8 @@ Future<void> createSchema(DatabaseExecutor db) async {
   await db.execute(CatchEntry.createIndexSql);
   await db.execute(FishSale.createTableSql);
   await db.execute(FishSale.createIndexSql);
+  await db.execute(Contract.createTableSql);
+  await db.execute(Contract.createIndexSql);
+  await db.execute(TripIncome.createTableSql);
+  await db.execute(TripIncome.createIndexSql);
 }

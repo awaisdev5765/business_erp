@@ -2,13 +2,18 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/activity/trip.dart';
+import '../../core/activity/trip_expense.dart';
 import '../../core/party/party.dart';
 import '../../core/system/providers.dart';
-import 'fish_category.dart';
-import 'fish_sale.dart';
-import 'trip_expense.dart';
-import 'trip_profit_service.dart';
+import '../fishery/fish_category.dart';
+import '../fishery/fish_sale.dart';
+import '../transport/contract.dart';
+import '../transport/trip_income.dart';
 
+/// Shared between Fishery and Transport — status actions and the expense
+/// list/add are identical for both; the catch+fish-sale section only
+/// shows for fishery trips, and the trip-income section only shows for
+/// transport trips. See PHASES.md Section 6/12.
 class TripDetailScreen extends ConsumerStatefulWidget {
   const TripDetailScreen({super.key, required this.trip});
 
@@ -21,10 +26,19 @@ class TripDetailScreen extends ConsumerStatefulWidget {
 class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
   late Trip _trip;
   List<TripExpense>? _expenses;
+
+  // Fishery-only state.
   List<CatchEntry>? _catches;
   List<FishSale>? _sales;
-  Map<String, FishCategory> _categoriesByUuid = {};
-  TripProfit? _profit;
+  Map<String, FishCategory> _fishCategoriesByUuid = {};
+
+  // Transport-only state.
+  List<TripIncome>? _incomes;
+
+  int? _revenue;
+  int? _expenseTotal;
+
+  bool get _isFishery => _trip.tripType == TripType.fishery;
 
   @override
   void initState() {
@@ -36,28 +50,47 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
   Future<void> _load() async {
     final tripRepo = await ref.read(tripRepositoryProvider.future);
     final expenseRepo = await ref.read(tripExpenseRepositoryProvider.future);
-    final catchRepo = await ref.read(catchRepositoryProvider.future);
-    final fishSaleRepo = await ref.read(fishSaleRepositoryProvider.future);
-    final categoryRepo = await ref.read(fishCategoryRepositoryProvider.future);
-    final profitService = await ref.read(tripProfitServiceProvider.future);
     final businessId = await ref.read(currentBusinessIdProvider.future);
 
     final reloaded = await tripRepo.findByUuid(_trip.uuid);
     final expenses = await expenseRepo.listByTrip(_trip.uuid);
-    final catches = await catchRepo.listByTrip(_trip.uuid);
-    final sales = await fishSaleRepo.listByTrip(_trip.uuid);
-    final categories = await categoryRepo.list(businessId: businessId);
-    final profit = await profitService.forTrip(_trip.uuid);
+    final expenseTotal = await expenseRepo.totalForTrip(_trip.uuid);
 
-    if (mounted) {
-      setState(() {
-        _trip = reloaded ?? _trip;
-        _expenses = expenses;
-        _catches = catches;
-        _sales = sales;
-        _categoriesByUuid = {for (final c in categories) c.uuid: c};
-        _profit = profit;
-      });
+    if (_isFishery) {
+      final catchRepo = await ref.read(catchRepositoryProvider.future);
+      final fishSaleRepo = await ref.read(fishSaleRepositoryProvider.future);
+      final categoryRepo = await ref.read(fishCategoryRepositoryProvider.future);
+
+      final catches = await catchRepo.listByTrip(_trip.uuid);
+      final sales = await fishSaleRepo.listByTrip(_trip.uuid);
+      final categories = await categoryRepo.list(businessId: businessId);
+      final revenue = await fishSaleRepo.totalForTrip(_trip.uuid);
+
+      if (mounted) {
+        setState(() {
+          _trip = reloaded ?? _trip;
+          _expenses = expenses;
+          _catches = catches;
+          _sales = sales;
+          _fishCategoriesByUuid = {for (final c in categories) c.uuid: c};
+          _revenue = revenue;
+          _expenseTotal = expenseTotal;
+        });
+      }
+    } else {
+      final incomeRepo = await ref.read(tripIncomeRepositoryProvider.future);
+      final incomes = await incomeRepo.listByTrip(_trip.uuid);
+      final revenue = await incomeRepo.totalForTrip(_trip.uuid);
+
+      if (mounted) {
+        setState(() {
+          _trip = reloaded ?? _trip;
+          _expenses = expenses;
+          _incomes = incomes;
+          _revenue = revenue;
+          _expenseTotal = expenseTotal;
+        });
+      }
     }
   }
 
@@ -74,9 +107,10 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
   }
 
   Future<void> _showAddExpenseDialog() async {
+    final categories = tripExpenseCategoriesByTripType[_trip.tripType.name]!;
     final amountController = TextEditingController();
     final descController = TextEditingController();
-    var category = TripExpenseCategory.fuel;
+    var category = categories.first;
 
     final saved = await showDialog<bool>(
       context: context,
@@ -89,10 +123,8 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
               DropdownButtonFormField<TripExpenseCategory>(
                 initialValue: category,
                 decoration: const InputDecoration(labelText: 'Category'),
-                items: TripExpenseCategory.values
-                    .map((c) => DropdownMenuItem(value: c, child: Text(c.name)))
-                    .toList(),
-                onChanged: (v) => setDialogState(() => category = v ?? TripExpenseCategory.fuel),
+                items: categories.map((c) => DropdownMenuItem(value: c, child: Text(c.name))).toList(),
+                onChanged: (v) => setDialogState(() => category = v ?? categories.first),
               ),
               TextField(
                 controller: amountController,
@@ -128,7 +160,7 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
     await _load();
   }
 
-  Future<FishCategory?> _pickOrCreateCategory() async {
+  Future<FishCategory?> _pickOrCreateFishCategory() async {
     final businessId = await ref.read(currentBusinessIdProvider.future);
     final categoryRepo = await ref.read(fishCategoryRepositoryProvider.future);
     final categories = await categoryRepo.list(businessId: businessId);
@@ -181,7 +213,7 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
   }
 
   Future<void> _showAddCatchDialog() async {
-    final category = await _pickOrCreateCategory();
+    final category = await _pickOrCreateFishCategory();
     if (category == null) return;
 
     final weightController = TextEditingController();
@@ -231,7 +263,7 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
   }
 
   Future<void> _showAddFishSaleDialog() async {
-    final category = await _pickOrCreateCategory();
+    final category = await _pickOrCreateFishCategory();
     if (category == null) return;
 
     final businessId = await ref.read(currentBusinessIdProvider.future);
@@ -319,12 +351,106 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
     }
   }
 
+  Future<void> _showAddTripIncomeDialog() async {
+    final businessId = await ref.read(currentBusinessIdProvider.future);
+    final partyRepo = await ref.read(partyRepositoryProvider.future);
+    final contractRepo = await ref.read(contractRepositoryProvider.future);
+    final customers = await partyRepo.list(businessId: businessId, type: PartyType.customer);
+    final contracts = await contractRepo.list(businessId: businessId);
+
+    final amountController = TextEditingController();
+    final descController = TextEditingController();
+    var paymentMethod = TripIncomePaymentMethod.cash;
+    Party? selectedCustomer;
+    Contract? selectedContract;
+
+    if (!mounted) return;
+    final saved = await showDialog<bool>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Add Trip Income'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: amountController,
+                decoration: const InputDecoration(labelText: 'Amount'),
+                keyboardType: TextInputType.number,
+              ),
+              TextField(controller: descController, decoration: const InputDecoration(labelText: 'Description (optional)')),
+              if (contracts.isNotEmpty)
+                DropdownButtonFormField<Contract?>(
+                  initialValue: selectedContract,
+                  decoration: const InputDecoration(labelText: 'Contract (optional)'),
+                  items: [
+                    const DropdownMenuItem<Contract?>(value: null, child: Text('—')),
+                    ...contracts.map((c) => DropdownMenuItem<Contract?>(value: c, child: Text(c.description))),
+                  ],
+                  onChanged: (v) => setDialogState(() => selectedContract = v),
+                ),
+              DropdownButtonFormField<TripIncomePaymentMethod>(
+                initialValue: paymentMethod,
+                decoration: const InputDecoration(labelText: 'Payment'),
+                items: TripIncomePaymentMethod.values
+                    .map((m) => DropdownMenuItem(value: m, child: Text(m.name)))
+                    .toList(),
+                onChanged: (v) => setDialogState(() => paymentMethod = v ?? TripIncomePaymentMethod.cash),
+              ),
+              if (paymentMethod == TripIncomePaymentMethod.credit)
+                DropdownButtonFormField<Party>(
+                  initialValue: selectedCustomer,
+                  decoration: const InputDecoration(labelText: 'Customer'),
+                  items: customers.map((c) => DropdownMenuItem(value: c, child: Text(c.name))).toList(),
+                  onChanged: (v) => setDialogState(() => selectedCustomer = v),
+                ),
+            ],
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+            FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Save')),
+          ],
+        ),
+      ),
+    );
+
+    if (saved != true) return;
+    final amount = ((double.tryParse(amountController.text) ?? 0) * 100).round();
+    if (amount <= 0) return;
+    if (paymentMethod == TripIncomePaymentMethod.credit && selectedCustomer == null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Select a customer for credit income')));
+      }
+      return;
+    }
+
+    final repo = await ref.read(tripIncomeRepositoryProvider.future);
+    try {
+      await repo.create(
+        businessId: businessId,
+        tripUuid: _trip.uuid,
+        customerUuid: selectedCustomer?.uuid,
+        contractUuid: selectedContract?.uuid,
+        amountMinorUnits: amount,
+        description: descController.text.isEmpty ? null : descController.text,
+        paymentMethod: paymentMethod,
+        createdBy: currentUser,
+        deviceId: currentDeviceId,
+      );
+      await _load();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final expenses = _expenses;
-    final catches = _catches;
-    final sales = _sales;
-    final profit = _profit;
+    final revenue = _revenue;
+    final expenseTotal = _expenseTotal;
+    final dataReady = _isFishery ? (_catches != null && _sales != null) : (_incomes != null);
 
     return Scaffold(
       appBar: AppBar(
@@ -336,23 +462,23 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
             TextButton(onPressed: _completeTrip, child: const Text('Complete Trip', style: TextStyle(color: Colors.white))),
         ],
       ),
-      body: expenses == null || catches == null || sales == null
+      body: expenses == null || !dataReady
           ? const Center(child: CircularProgressIndicator())
           : ListView(
               padding: const EdgeInsets.all(16),
               children: [
-                if (profit != null)
+                if (revenue != null && expenseTotal != null)
                   Card(
-                    color: profit.profitMinorUnits >= 0 ? Colors.green.shade50 : Colors.red.shade50,
+                    color: revenue - expenseTotal >= 0 ? Colors.green.shade50 : Colors.red.shade50,
                     child: Padding(
                       padding: const EdgeInsets.all(16),
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Text('Revenue: ${_money(profit.revenueMinorUnits)}'),
-                          Text('Expenses: ${_money(profit.expenseMinorUnits)}'),
+                          Text('Revenue: ${_money(revenue)}'),
+                          Text('Expenses: ${_money(expenseTotal)}'),
                           Text(
-                            'Profit: ${_money(profit.profitMinorUnits)}',
+                            'Profit: ${_money(revenue - expenseTotal)}',
                             style: const TextStyle(fontWeight: FontWeight.bold),
                           ),
                         ],
@@ -373,33 +499,59 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
                       trailing: Text(_money(e.amountMinorUnits)),
                     )),
                 const Divider(),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text('Catch', style: Theme.of(context).textTheme.titleMedium),
-                    TextButton(onPressed: _showAddCatchDialog, child: const Text('+ Record Catch')),
-                  ],
-                ),
-                ...catches.map((c) => ListTile(
-                      title: Text(_categoriesByUuid[c.fishCategoryUuid]?.name ?? c.fishCategoryUuid),
-                      trailing: Text('${c.weightKg} kg'),
-                    )),
-                const Divider(),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text('Fish Sales', style: Theme.of(context).textTheme.titleMedium),
-                    TextButton(onPressed: _showAddFishSaleDialog, child: const Text('+ Sell Catch')),
-                  ],
-                ),
-                ...sales.map((s) => ListTile(
-                      title: Text(_categoriesByUuid[s.fishCategoryUuid]?.name ?? s.fishCategoryUuid),
-                      subtitle: Text('${s.weightKg} kg @ ${_money(s.unitPriceMinorUnitsPerKg)}/kg  •  ${s.paymentMethod.name}'),
-                      trailing: Text(_money(s.totalMinorUnits)),
-                    )),
+                if (_isFishery) ..._buildFisherySections(context) else ..._buildTransportSections(context),
               ],
             ),
     );
+  }
+
+  List<Widget> _buildFisherySections(BuildContext context) {
+    final catches = _catches!;
+    final sales = _sales!;
+    return [
+      Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text('Catch', style: Theme.of(context).textTheme.titleMedium),
+          TextButton(onPressed: _showAddCatchDialog, child: const Text('+ Record Catch')),
+        ],
+      ),
+      ...catches.map((c) => ListTile(
+            title: Text(_fishCategoriesByUuid[c.fishCategoryUuid]?.name ?? c.fishCategoryUuid),
+            trailing: Text('${c.weightKg} kg'),
+          )),
+      const Divider(),
+      Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text('Fish Sales', style: Theme.of(context).textTheme.titleMedium),
+          TextButton(onPressed: _showAddFishSaleDialog, child: const Text('+ Sell Catch')),
+        ],
+      ),
+      ...sales.map((s) => ListTile(
+            title: Text(_fishCategoriesByUuid[s.fishCategoryUuid]?.name ?? s.fishCategoryUuid),
+            subtitle: Text('${s.weightKg} kg @ ${_money(s.unitPriceMinorUnitsPerKg)}/kg  •  ${s.paymentMethod.name}'),
+            trailing: Text(_money(s.totalMinorUnits)),
+          )),
+    ];
+  }
+
+  List<Widget> _buildTransportSections(BuildContext context) {
+    final incomes = _incomes!;
+    return [
+      Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text('Trip Income', style: Theme.of(context).textTheme.titleMedium),
+          TextButton(onPressed: _showAddTripIncomeDialog, child: const Text('+ Add Income')),
+        ],
+      ),
+      ...incomes.map((i) => ListTile(
+            title: Text(i.description ?? 'Trip income'),
+            subtitle: Text(i.paymentMethod.name),
+            trailing: Text(_money(i.amountMinorUnits)),
+          )),
+    ];
   }
 }
 

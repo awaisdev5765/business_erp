@@ -7,6 +7,7 @@ import '../accounting/chart_of_accounts_seed.dart';
 import '../accounting/fiscal_period_repository.dart';
 import '../accounting/ledger_repository.dart';
 import '../accounting/tax_rate_repository.dart';
+import '../activity/trip_expense_repository.dart';
 import '../activity/trip_repository.dart';
 import '../asset/operating_asset_repository.dart';
 import '../party/party_repository.dart';
@@ -14,11 +15,14 @@ import '../tenant/business.dart';
 import '../transaction/payment_repository.dart';
 import '../../features/fishery/catch_repository.dart';
 import '../../features/fishery/fish_sale_repository.dart';
-import '../../features/fishery/trip_expense_repository.dart';
 import '../../features/fishery/trip_profit_service.dart';
 import '../../features/spare_parts/inventory/product_repository.dart';
 import '../../features/spare_parts/purchases/purchase_repository.dart';
 import '../../features/spare_parts/sales/sale_repository.dart';
+import '../../features/transport/contract_repository.dart';
+import '../../features/transport/driver_performance_service.dart';
+import '../../features/transport/trip_income_repository.dart';
+import '../../features/transport/vehicle_profitability_service.dart';
 import 'audit_log_repository.dart';
 import 'database.dart';
 import 'number_sequence_service.dart';
@@ -122,7 +126,7 @@ final paymentRepositoryProvider = FutureProvider<PaymentRepository>((ref) async 
   return PaymentRepository(db, ledger, numbering);
 });
 
-// --- Fishery vertical ---
+// --- Shared across Fishery/Transport (OperatingAsset, Trip, TripExpense) ---
 
 final operatingAssetRepositoryProvider = FutureProvider<OperatingAssetRepository>((ref) async {
   final db = await ref.watch(databaseProvider.future);
@@ -140,6 +144,8 @@ final tripExpenseRepositoryProvider = FutureProvider<TripExpenseRepository>((ref
   final trips = await ref.watch(tripRepositoryProvider.future);
   return TripExpenseRepository(db, ledger, trips);
 });
+
+// --- Fishery vertical ---
 
 final fishCategoryRepositoryProvider = FutureProvider<FishCategoryRepository>((ref) async {
   final db = await ref.watch(databaseProvider.future);
@@ -162,4 +168,30 @@ final tripProfitServiceProvider = FutureProvider<TripProfitService>((ref) async 
   final fishSales = await ref.watch(fishSaleRepositoryProvider.future);
   final tripExpenses = await ref.watch(tripExpenseRepositoryProvider.future);
   return TripProfitService(fishSales, tripExpenses);
+});
+
+// --- Transport vertical ---
+
+final contractRepositoryProvider = FutureProvider<ContractRepository>((ref) async {
+  final db = await ref.watch(databaseProvider.future);
+  return ContractRepository(db);
+});
+
+final tripIncomeRepositoryProvider = FutureProvider<TripIncomeRepository>((ref) async {
+  final db = await ref.watch(databaseProvider.future);
+  final ledger = await ref.watch(ledgerRepositoryProvider.future);
+  final trips = await ref.watch(tripRepositoryProvider.future);
+  return TripIncomeRepository(db, ledger, trips);
+});
+
+final vehicleProfitabilityServiceProvider = FutureProvider<VehicleProfitabilityService>((ref) async {
+  final tripIncome = await ref.watch(tripIncomeRepositoryProvider.future);
+  final tripExpenses = await ref.watch(tripExpenseRepositoryProvider.future);
+  return VehicleProfitabilityService(tripIncome, tripExpenses);
+});
+
+final driverPerformanceServiceProvider = FutureProvider<DriverPerformanceService>((ref) async {
+  final tripIncome = await ref.watch(tripIncomeRepositoryProvider.future);
+  final tripExpenses = await ref.watch(tripExpenseRepositoryProvider.future);
+  return DriverPerformanceService(tripIncome, tripExpenses);
 });

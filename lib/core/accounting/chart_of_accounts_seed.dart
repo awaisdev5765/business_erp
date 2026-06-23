@@ -26,6 +26,9 @@ const List<(String, String, AccountType)> _seedAccounts = [
   ('5040', 'Ice Expense', AccountType.expense),
   ('5045', 'Food Expense', AccountType.expense),
   ('5050', 'Other Operating Expense', AccountType.expense),
+  ('5060', 'Repair Expense', AccountType.expense),
+  ('5070', 'Tyre Expense', AccountType.expense),
+  ('5080', 'Oil Change Expense', AccountType.expense),
 ];
 
 Future<void> seedChartOfAccounts(Database db, String businessId) async {

@@ -1,10 +1,10 @@
 import 'package:sqflite/sqflite.dart';
 import 'package:uuid/uuid.dart';
 
-import '../../core/accounting/journal_entry.dart';
-import '../../core/accounting/ledger_repository.dart';
-import '../../core/activity/trip_repository.dart';
+import '../accounting/journal_entry.dart';
+import '../accounting/ledger_repository.dart';
 import 'trip_expense.dart';
+import 'trip_repository.dart';
 
 const _uuid = Uuid();
 
@@ -84,6 +84,31 @@ class TripExpenseRepository {
       'SELECT COALESCE(SUM(amount_minor_units), 0) AS total FROM ${TripExpense.tableName} WHERE trip_uuid = ?',
       [tripUuid],
     );
+    return result.first['total'] as int;
+  }
+
+  /// Total expenses across every trip ever run by one asset (boat or
+  /// vehicle) — powers Boat/Vehicle Profitability rollups, the per-asset
+  /// counterpart to totalForTrip's per-trip view.
+  Future<int> totalForAsset(String assetUuid) async {
+    final result = await db.rawQuery('''
+      SELECT COALESCE(SUM(te.amount_minor_units), 0) AS total
+      FROM ${TripExpense.tableName} te
+      INNER JOIN trips t ON t.uuid = te.trip_uuid
+      WHERE t.asset_uuid = ?
+    ''', [assetUuid]);
+    return result.first['total'] as int;
+  }
+
+  /// Total expenses across every trip captained/driven by one party —
+  /// powers Driver Performance.
+  Future<int> totalForDriver(String captainUuid) async {
+    final result = await db.rawQuery('''
+      SELECT COALESCE(SUM(te.amount_minor_units), 0) AS total
+      FROM ${TripExpense.tableName} te
+      INNER JOIN trips t ON t.uuid = te.trip_uuid
+      WHERE t.captain_uuid = ?
+    ''', [captainUuid]);
     return result.first['total'] as int;
   }
 }

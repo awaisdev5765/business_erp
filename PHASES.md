@@ -73,13 +73,17 @@ automatically (see `lib/core/system/database.dart`).
 
 **Known gap carried over:** the NavigationRail now lists Spare Parts and Fishery screens side by side with no business-type-aware filtering — there's no concept yet of "this nav item only shows for a Fishery business." That's deferred to Phase 5/Identity work alongside the business switcher itself (see Phase 1's "Known gap" note).
 
-## Phase 4 — Transport vertical
-- [ ] `OperatingAsset` (Vehicles)
-- [ ] Drivers + Driver Assignment
-- [ ] Contracts
-- [ ] Trip (transport type) — Trip Management, Trip Income
-- [ ] Vehicle expenses (Fuel/Maintenance/Repair/Tyres/Oil)
-- [ ] Vehicle Ledger, Vehicle Profitability, Driver Performance
+## Phase 4 — Transport vertical (DONE)
+- [x] `OperatingAsset` (Vehicles) — same table as Boats, just `type: vehicle`, exactly as planned in Phase 3
+- [x] Drivers (`Party`, `type: driver`) + Driver Assignment — assignment is just `Trip.captainUuid` (the same field Fishery's Captain uses); no separate assignment table needed
+- [x] Contracts — new `Contract` registry (company + description + optional rate-per-trip), simple CRUD, optionally referenced by `TripIncome` for traceability. No automatic invoicing/term enforcement — Receivable/Payable tracking for a contract's company is just the existing Customer Ledger, reused as-is
+- [x] Trip (`tripType: transport`) — Trip Management reuses the exact same `Trip`/`TripRepository` as Fishery; Trip Income via new `TripIncome` (mirrors `FishSale`'s posting pattern: Dr Cash/Receivable / Cr Trip-Catch Income(4020), no COGS — the trip's cost was already expensed via TripExpense)
+- [x] Vehicle expenses (Fuel 5020/Maintenance 5030/Repair 5060/Tyre 5070/Oil 5080) — extended the *same* `TripExpenseCategory` enum and `TripExpense`/`TripExpenseRepository` Fishery built in Phase 3, rather than a parallel Vehicle-specific expense system. Relocated `TripExpense` from `features/fishery/` to `core/activity/` since it's no longer vertical-specific. UI filters which categories it shows via `tripExpenseCategoriesByTripType`.
+- [x] Vehicle Ledger (`AssetLedgerScreen`, generalized from `BoatLedgerScreen` — same `LedgerRepository.dimensionStatement()` query, now also showing a lifetime profitability summary card for vehicles) + Vehicle Profitability (`VehicleProfitabilityService` — `TripIncomeRepository.totalForAsset()` minus `TripExpenseRepository.totalForAsset()`, both new queries joining through `trips`) + Driver Performance (`DriverPerformanceService`, same shape grouped by `captainUuid` instead of `assetUuid`)
+- [x] Generalized `TripsScreen`/`TripDetailScreen` (moved to `features/activity/`) to be `tripType`-aware instead of duplicating fishery-specific screens: asset/crew labels and dropdowns adapt to Boat/Captain vs Vehicle/Driver, and the trip detail body shows Catch+FishSale sections for fishery or a Trip Income section for transport. Also generalized `BoatsScreen` → `AssetsScreen(assetType)` and `CrewScreen` to accept a configurable role list (reused for both Captains/Crew and Drivers).
+- [x] Tests: full two-trip transport flow (fuel/repair/tyre/oil expenses, cash + credit trip income) verifying Vehicle Ledger shows every account touched and Vehicle Profitability/Driver Performance roll up correctly *across* trips, not just within one; credit-trip-income-without-customer rejection
+
+**Architectural payoff realized:** Phase 4 needed zero new tables for OperatingAsset, Party, or Trip, and zero new expense-posting logic for TripExpense — only `TripIncome` and `Contract` were genuinely new, because Transport's revenue shape (a flat trip fee) differs from Fishery's (weight × price). This is the reuse the "unified entity" design in PHASES.md Section 6/12 was meant to produce.
 
 ## Phase 5 — Sync + multi-device
 - [ ] Wire Firebase (Auth, Firestore, Cloud Functions, FCM) per the

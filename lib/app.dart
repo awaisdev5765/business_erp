@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'core/activity/trip.dart';
+import 'core/asset/operating_asset.dart';
 import 'core/party/party.dart';
 import 'core/party/party_list_screen.dart';
 import 'core/system/providers.dart';
@@ -9,13 +11,15 @@ import 'features/accounting/bank_accounts_screen.dart';
 import 'features/accounting/cash_book_screen.dart';
 import 'features/accounting/profit_and_loss_screen.dart';
 import 'features/accounting/trial_balance_screen.dart';
+import 'features/activity/assets_screen.dart';
+import 'features/activity/crew_screen.dart';
+import 'features/activity/trips_screen.dart';
 import 'features/dashboard/dashboard_screen.dart';
-import 'features/fishery/boats_screen.dart';
-import 'features/fishery/crew_screen.dart';
-import 'features/fishery/trips_screen.dart';
 import 'features/spare_parts/inventory/product_list_screen.dart';
 import 'features/spare_parts/purchases/purchase_entry_screen.dart';
 import 'features/spare_parts/sales/sale_entry_screen.dart';
+import 'features/transport/contracts_screen.dart';
+import 'features/transport/driver_performance_screen.dart';
 
 class BusinessErpApp extends StatelessWidget {
   const BusinessErpApp({super.key});
@@ -57,7 +61,11 @@ class _AppShellState extends ConsumerState<_AppShell> {
     (icon: Icons.account_balance_outlined, label: 'Bank Accounts'),
     (icon: Icons.directions_boat_outlined, label: 'Boats'),
     (icon: Icons.groups_outlined, label: 'Crew'),
-    (icon: Icons.sailing_outlined, label: 'Trips'),
+    (icon: Icons.sailing_outlined, label: 'Fishing Trips'),
+    (icon: Icons.local_shipping_outlined, label: 'Vehicles'),
+    (icon: Icons.badge_outlined, label: 'Drivers'),
+    (icon: Icons.description_outlined, label: 'Contracts'),
+    (icon: Icons.alt_route_outlined, label: 'Haul Trips'),
   ];
 
   Widget _buildBody() {
@@ -85,11 +93,30 @@ class _AppShellState extends ConsumerState<_AppShell> {
       case 10:
         return const BankAccountsScreen();
       case 11:
-        return const BoatsScreen();
+        return const AssetsScreen(assetType: OperatingAssetType.boat);
       case 12:
-        return const CrewScreen();
+        return CrewScreen(
+          title: 'Captains & Crew',
+          roles: const [PartyType.captain, PartyType.crew],
+          roleLabels: const {PartyType.captain: 'Captain', PartyType.crew: 'Crew'},
+        );
       case 13:
-        return const TripsScreen();
+        return const TripsScreen(tripType: TripType.fishery);
+      case 14:
+        return const AssetsScreen(assetType: OperatingAssetType.vehicle);
+      case 15:
+        return CrewScreen(
+          title: 'Drivers',
+          roles: const [PartyType.driver],
+          roleLabels: const {PartyType.driver: 'Driver'},
+          onTapPerson: (context, person) => Navigator.of(context).push(
+            MaterialPageRoute(builder: (_) => DriverPerformanceScreen(driver: person)),
+          ),
+        );
+      case 16:
+        return const ContractsScreen();
+      case 17:
+        return const TripsScreen(tripType: TripType.transport);
       default:
         return const DashboardScreen();
     }

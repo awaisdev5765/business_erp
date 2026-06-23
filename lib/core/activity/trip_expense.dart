@@ -1,4 +1,9 @@
-enum TripExpenseCategory { fuel, ice, food, maintenance, other }
+/// Shared across Fishery and Transport trips — ice/food apply to fishery,
+/// repair/tyre/oil apply to transport, fuel/maintenance/other apply to
+/// both. The UI filters which categories it offers based on the trip's
+/// `tripType` (see [tripExpenseCategoriesByTripType]); the backend
+/// doesn't need to know or care which vertical a category "belongs to".
+enum TripExpenseCategory { fuel, ice, food, maintenance, repair, tyre, oil, other }
 
 /// Maps each category to its Chart of Accounts code — see
 /// chart_of_accounts_seed.dart for the seeded expense accounts.
@@ -7,7 +12,31 @@ const Map<TripExpenseCategory, String> tripExpenseAccountCode = {
   TripExpenseCategory.ice: '5040',
   TripExpenseCategory.food: '5045',
   TripExpenseCategory.maintenance: '5030',
+  TripExpenseCategory.repair: '5060',
+  TripExpenseCategory.tyre: '5070',
+  TripExpenseCategory.oil: '5080',
   TripExpenseCategory.other: '5050',
+};
+
+/// Which categories are relevant to which vertical — used to filter the
+/// expense-category dropdown in the UI per trip type (keyed by
+/// `TripType.name` to avoid a core/activity -> core/activity self-import).
+const Map<String, List<TripExpenseCategory>> tripExpenseCategoriesByTripType = {
+  'fishery': [
+    TripExpenseCategory.fuel,
+    TripExpenseCategory.ice,
+    TripExpenseCategory.food,
+    TripExpenseCategory.maintenance,
+    TripExpenseCategory.other,
+  ],
+  'transport': [
+    TripExpenseCategory.fuel,
+    TripExpenseCategory.maintenance,
+    TripExpenseCategory.repair,
+    TripExpenseCategory.tyre,
+    TripExpenseCategory.oil,
+    TripExpenseCategory.other,
+  ],
 };
 
 /// One expense logged against a trip — posts Dr (category account) / Cr

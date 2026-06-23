@@ -3,17 +3,26 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/asset/operating_asset.dart';
 import '../../core/system/providers.dart';
-import 'boat_ledger_screen.dart';
+import 'asset_ledger_screen.dart';
 
-class BoatsScreen extends ConsumerStatefulWidget {
-  const BoatsScreen({super.key});
+/// Shared between Fishery (Boats) and Transport (Vehicles) — same fields,
+/// different [OperatingAssetType]. See PHASES.md Section 6/12.
+class AssetsScreen extends ConsumerStatefulWidget {
+  const AssetsScreen({super.key, required this.assetType});
+
+  final OperatingAssetType assetType;
 
   @override
-  ConsumerState<BoatsScreen> createState() => _BoatsScreenState();
+  ConsumerState<AssetsScreen> createState() => _AssetsScreenState();
 }
 
-class _BoatsScreenState extends ConsumerState<BoatsScreen> {
-  List<OperatingAsset>? _boats;
+class _AssetsScreenState extends ConsumerState<AssetsScreen> {
+  List<OperatingAsset>? _assets;
+
+  String get _label => widget.assetType == OperatingAssetType.boat ? 'Boat' : 'Vehicle';
+  String get _labelPlural => widget.assetType == OperatingAssetType.boat ? 'Boats' : 'Vehicles';
+  IconData get _icon =>
+      widget.assetType == OperatingAssetType.boat ? Icons.directions_boat_outlined : Icons.local_shipping_outlined;
 
   @override
   void initState() {
@@ -24,8 +33,8 @@ class _BoatsScreenState extends ConsumerState<BoatsScreen> {
   Future<void> _load() async {
     final businessId = await ref.read(currentBusinessIdProvider.future);
     final repo = await ref.read(operatingAssetRepositoryProvider.future);
-    final boats = await repo.list(businessId: businessId, type: OperatingAssetType.boat);
-    if (mounted) setState(() => _boats = boats);
+    final assets = await repo.list(businessId: businessId, type: widget.assetType);
+    if (mounted) setState(() => _assets = assets);
   }
 
   Future<void> _showAddDialog() async {
@@ -35,11 +44,11 @@ class _BoatsScreenState extends ConsumerState<BoatsScreen> {
     final saved = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('New Boat'),
+        title: Text('New $_label'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            TextField(controller: nameController, decoration: const InputDecoration(labelText: 'Boat name')),
+            TextField(controller: nameController, decoration: InputDecoration(labelText: '$_label name')),
             TextField(controller: regController, decoration: const InputDecoration(labelText: 'Registration number')),
           ],
         ),
@@ -56,7 +65,7 @@ class _BoatsScreenState extends ConsumerState<BoatsScreen> {
     final repo = await ref.read(operatingAssetRepositoryProvider.future);
     await repo.create(
       businessId: businessId,
-      type: OperatingAssetType.boat,
+      type: widget.assetType,
       name: nameController.text,
       registrationNumber: regController.text.isEmpty ? null : regController.text,
     );
@@ -65,25 +74,25 @@ class _BoatsScreenState extends ConsumerState<BoatsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final boats = _boats;
+    final assets = _assets;
     return Scaffold(
-      appBar: AppBar(title: const Text('Boats')),
+      appBar: AppBar(title: Text(_labelPlural)),
       floatingActionButton: FloatingActionButton(onPressed: _showAddDialog, child: const Icon(Icons.add)),
-      body: boats == null
+      body: assets == null
           ? const Center(child: CircularProgressIndicator())
-          : boats.isEmpty
-              ? const Center(child: Text('No boats yet — tap + to add one.'))
+          : assets.isEmpty
+              ? Center(child: Text('No ${_labelPlural.toLowerCase()} yet — tap + to add one.'))
               : ListView.builder(
-                  itemCount: boats.length,
+                  itemCount: assets.length,
                   itemBuilder: (context, index) {
-                    final boat = boats[index];
+                    final asset = assets[index];
                     return ListTile(
-                      leading: const Icon(Icons.directions_boat_outlined),
-                      title: Text(boat.name),
-                      subtitle: boat.registrationNumber != null ? Text(boat.registrationNumber!) : null,
+                      leading: Icon(_icon),
+                      title: Text(asset.name),
+                      subtitle: asset.registrationNumber != null ? Text(asset.registrationNumber!) : null,
                       trailing: const Icon(Icons.chevron_right),
                       onTap: () => Navigator.of(context).push(
-                        MaterialPageRoute(builder: (_) => BoatLedgerScreen(boat: boat)),
+                        MaterialPageRoute(builder: (_) => AssetLedgerScreen(asset: asset)),
                       ),
                     );
                   },

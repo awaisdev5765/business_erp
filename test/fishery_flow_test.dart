@@ -15,8 +15,8 @@ import 'package:business_erp/core/system/database.dart';
 import 'package:business_erp/features/fishery/catch_repository.dart';
 import 'package:business_erp/features/fishery/fish_sale.dart';
 import 'package:business_erp/features/fishery/fish_sale_repository.dart';
-import 'package:business_erp/features/fishery/trip_expense.dart';
-import 'package:business_erp/features/fishery/trip_expense_repository.dart';
+import 'package:business_erp/core/activity/trip_expense.dart';
+import 'package:business_erp/core/activity/trip_expense_repository.dart';
 import 'package:business_erp/features/fishery/trip_profit_service.dart';
 
 void main() {

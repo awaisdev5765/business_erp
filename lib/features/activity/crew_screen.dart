@@ -4,12 +4,25 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/party/party.dart';
 import '../../core/system/providers.dart';
 
-/// Captains and Crew, both stored as [Party] records (type captain/crew) —
-/// see PHASES.md Section 6/12 for why Party is reused here instead of a
-/// new table. No ledger/payment actions here (unlike the Customer/Supplier
-/// list screen) — salary tracking is Payroll, a later phase.
+/// A registry of [Party] records for one or more crew-like roles —
+/// Captains+Crew for Fishery, Drivers for Transport. Same model
+/// (PHASES.md Section 6/12), no ledger/payment actions (salary tracking
+/// is a later Payroll phase). [onTapPerson] is optional — Transport uses
+/// it to drill into Driver Performance; Fishery doesn't need a per-person
+/// drill-down screen.
 class CrewScreen extends ConsumerStatefulWidget {
-  const CrewScreen({super.key});
+  const CrewScreen({
+    super.key,
+    required this.title,
+    required this.roles,
+    required this.roleLabels,
+    this.onTapPerson,
+  });
+
+  final String title;
+  final List<PartyType> roles;
+  final Map<PartyType, String> roleLabels;
+  final void Function(BuildContext context, Party person)? onTapPerson;
 
   @override
   ConsumerState<CrewScreen> createState() => _CrewScreenState();
@@ -27,33 +40,35 @@ class _CrewScreenState extends ConsumerState<CrewScreen> {
   Future<void> _load() async {
     final businessId = await ref.read(currentBusinessIdProvider.future);
     final repo = await ref.read(partyRepositoryProvider.future);
-    final captains = await repo.list(businessId: businessId, type: PartyType.captain);
-    final crew = await repo.list(businessId: businessId, type: PartyType.crew);
-    if (mounted) setState(() => _people = [...captains, ...crew]);
+    final people = <Party>[];
+    for (final role in widget.roles) {
+      people.addAll(await repo.list(businessId: businessId, type: role));
+    }
+    if (mounted) setState(() => _people = people);
   }
 
   Future<void> _showAddDialog() async {
     final nameController = TextEditingController();
     final phoneController = TextEditingController();
-    var type = PartyType.captain;
+    var type = widget.roles.first;
 
     final saved = await showDialog<bool>(
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
-          title: const Text('New Crew Member'),
+          title: Text('New ${widget.title.split(' ').first}'),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              DropdownButtonFormField<PartyType>(
-                initialValue: type,
-                decoration: const InputDecoration(labelText: 'Role'),
-                items: const [
-                  DropdownMenuItem(value: PartyType.captain, child: Text('Captain')),
-                  DropdownMenuItem(value: PartyType.crew, child: Text('Crew')),
-                ],
-                onChanged: (v) => setDialogState(() => type = v ?? PartyType.captain),
-              ),
+              if (widget.roles.length > 1)
+                DropdownButtonFormField<PartyType>(
+                  initialValue: type,
+                  decoration: const InputDecoration(labelText: 'Role'),
+                  items: widget.roles
+                      .map((r) => DropdownMenuItem(value: r, child: Text(widget.roleLabels[r]!)))
+                      .toList(),
+                  onChanged: (v) => setDialogState(() => type = v ?? widget.roles.first),
+                ),
               TextField(controller: nameController, decoration: const InputDecoration(labelText: 'Name')),
               TextField(controller: phoneController, decoration: const InputDecoration(labelText: 'Phone')),
             ],
@@ -83,20 +98,24 @@ class _CrewScreenState extends ConsumerState<CrewScreen> {
   Widget build(BuildContext context) {
     final people = _people;
     return Scaffold(
-      appBar: AppBar(title: const Text('Captains & Crew')),
+      appBar: AppBar(title: Text(widget.title)),
       floatingActionButton: FloatingActionButton(onPressed: _showAddDialog, child: const Icon(Icons.add)),
       body: people == null
           ? const Center(child: CircularProgressIndicator())
           : people.isEmpty
-              ? const Center(child: Text('No crew yet — tap + to add one.'))
+              ? const Center(child: Text('No one yet — tap + to add one.'))
               : ListView.builder(
                   itemCount: people.length,
                   itemBuilder: (context, index) {
                     final person = people[index];
                     return ListTile(
-                      leading: Icon(person.type == PartyType.captain ? Icons.military_tech : Icons.groups),
+                      leading: const Icon(Icons.person_outline),
                       title: Text(person.name),
-                      subtitle: Text('${person.type == PartyType.captain ? 'Captain' : 'Crew'}${person.phone != null ? ' • ${person.phone}' : ''}'),
+                      subtitle: Text(
+                        '${widget.roleLabels[person.type] ?? person.type.name}${person.phone != null ? ' • ${person.phone}' : ''}',
+                      ),
+                      trailing: widget.onTapPerson != null ? const Icon(Icons.chevron_right) : null,
+                      onTap: widget.onTapPerson != null ? () => widget.onTapPerson!(context, person) : null,
                     );
                   },
                 ),

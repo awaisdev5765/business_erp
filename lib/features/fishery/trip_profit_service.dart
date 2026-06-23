@@ -1,5 +1,5 @@
+import '../../core/activity/trip_expense_repository.dart';
 import 'fish_sale_repository.dart';
-import 'trip_expense_repository.dart';
 
 class TripProfit {
   TripProfit({required this.revenueMinorUnits, required this.expenseMinorUnits});

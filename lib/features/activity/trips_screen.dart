@@ -7,8 +7,13 @@ import '../../core/party/party.dart';
 import '../../core/system/providers.dart';
 import 'trip_detail_screen.dart';
 
+/// Shared between Fishery and Transport — same Trip lifecycle, just a
+/// different asset type (boat/vehicle) and crew type (captain/driver).
+/// See PHASES.md Section 6/12.
 class TripsScreen extends ConsumerStatefulWidget {
-  const TripsScreen({super.key});
+  const TripsScreen({super.key, required this.tripType});
+
+  final TripType tripType;
 
   @override
   ConsumerState<TripsScreen> createState() => _TripsScreenState();
@@ -16,7 +21,16 @@ class TripsScreen extends ConsumerStatefulWidget {
 
 class _TripsScreenState extends ConsumerState<TripsScreen> {
   List<Trip>? _trips;
-  Map<String, OperatingAsset> _boatsByUuid = {};
+  Map<String, OperatingAsset> _assetsByUuid = {};
+
+  OperatingAssetType get _assetType =>
+      widget.tripType == TripType.fishery ? OperatingAssetType.boat : OperatingAssetType.vehicle;
+
+  PartyType get _crewType => widget.tripType == TripType.fishery ? PartyType.captain : PartyType.driver;
+
+  String get _assetLabel => widget.tripType == TripType.fishery ? 'Boat' : 'Vehicle';
+
+  String get _crewLabel => widget.tripType == TripType.fishery ? 'Captain' : 'Driver';
 
   @override
   void initState() {
@@ -29,13 +43,13 @@ class _TripsScreenState extends ConsumerState<TripsScreen> {
     final tripRepo = await ref.read(tripRepositoryProvider.future);
     final assetRepo = await ref.read(operatingAssetRepositoryProvider.future);
 
-    final trips = await tripRepo.list(businessId: businessId, tripType: TripType.fishery);
-    final boats = await assetRepo.list(businessId: businessId, type: OperatingAssetType.boat);
+    final trips = await tripRepo.list(businessId: businessId, tripType: widget.tripType);
+    final assetList = await assetRepo.list(businessId: businessId, type: _assetType);
 
     if (mounted) {
       setState(() {
         _trips = trips;
-        _boatsByUuid = {for (final b in boats) b.uuid: b};
+        _assetsByUuid = {for (final a in assetList) a.uuid: a};
       });
     }
   }
@@ -45,18 +59,18 @@ class _TripsScreenState extends ConsumerState<TripsScreen> {
     final assetRepo = await ref.read(operatingAssetRepositoryProvider.future);
     final partyRepo = await ref.read(partyRepositoryProvider.future);
 
-    final boats = await assetRepo.list(businessId: businessId, type: OperatingAssetType.boat);
-    final captains = await partyRepo.list(businessId: businessId, type: PartyType.captain);
+    final assetList = await assetRepo.list(businessId: businessId, type: _assetType);
+    final crew = await partyRepo.list(businessId: businessId, type: _crewType);
 
-    if (boats.isEmpty) {
+    if (assetList.isEmpty) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Add a boat first')));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Add a $_assetLabel first')));
       }
       return;
     }
 
-    OperatingAsset selectedBoat = boats.first;
-    Party? selectedCaptain;
+    OperatingAsset selectedAsset = assetList.first;
+    Party? selectedCrew;
 
     if (!mounted) return;
     final saved = await showDialog<bool>(
@@ -68,19 +82,19 @@ class _TripsScreenState extends ConsumerState<TripsScreen> {
             mainAxisSize: MainAxisSize.min,
             children: [
               DropdownButtonFormField<OperatingAsset>(
-                initialValue: selectedBoat,
-                decoration: const InputDecoration(labelText: 'Boat'),
-                items: boats.map((b) => DropdownMenuItem(value: b, child: Text(b.name))).toList(),
-                onChanged: (v) => setDialogState(() => selectedBoat = v ?? boats.first),
+                initialValue: selectedAsset,
+                decoration: InputDecoration(labelText: _assetLabel),
+                items: assetList.map((a) => DropdownMenuItem(value: a, child: Text(a.name))).toList(),
+                onChanged: (v) => setDialogState(() => selectedAsset = v ?? assetList.first),
               ),
               DropdownButtonFormField<Party?>(
-                initialValue: selectedCaptain,
-                decoration: const InputDecoration(labelText: 'Captain (optional)'),
+                initialValue: selectedCrew,
+                decoration: InputDecoration(labelText: '$_crewLabel (optional)'),
                 items: [
                   const DropdownMenuItem<Party?>(value: null, child: Text('—')),
-                  ...captains.map((c) => DropdownMenuItem<Party?>(value: c, child: Text(c.name))),
+                  ...crew.map((c) => DropdownMenuItem<Party?>(value: c, child: Text(c.name))),
                 ],
-                onChanged: (v) => setDialogState(() => selectedCaptain = v),
+                onChanged: (v) => setDialogState(() => selectedCrew = v),
               ),
             ],
           ),
@@ -97,9 +111,9 @@ class _TripsScreenState extends ConsumerState<TripsScreen> {
     final tripRepo = await ref.read(tripRepositoryProvider.future);
     await tripRepo.create(
       businessId: businessId,
-      tripType: TripType.fishery,
-      assetUuid: selectedBoat.uuid,
-      captainUuid: selectedCaptain?.uuid,
+      tripType: widget.tripType,
+      assetUuid: selectedAsset.uuid,
+      captainUuid: selectedCrew?.uuid,
     );
     await _load();
   }
@@ -118,10 +132,10 @@ class _TripsScreenState extends ConsumerState<TripsScreen> {
                   itemCount: trips.length,
                   itemBuilder: (context, index) {
                     final trip = trips[index];
-                    final boat = _boatsByUuid[trip.assetUuid];
+                    final asset = _assetsByUuid[trip.assetUuid];
                     return ListTile(
                       leading: Icon(_statusIcon(trip.status)),
-                      title: Text(boat?.name ?? trip.assetUuid),
+                      title: Text(asset?.name ?? trip.assetUuid),
                       subtitle: Text('${trip.status.name}  •  ${_formatDate(trip.startDate)}'),
                       trailing: const Icon(Icons.chevron_right),
                       onTap: () async {
@@ -142,7 +156,7 @@ IconData _statusIcon(TripStatus status) {
     case TripStatus.planned:
       return Icons.schedule;
     case TripStatus.inProgress:
-      return Icons.sailing;
+      return Icons.local_shipping;
     case TripStatus.completed:
       return Icons.check_circle_outline;
   }
