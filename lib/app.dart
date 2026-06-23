@@ -8,9 +8,11 @@ import 'core/identity/auth_gate.dart';
 import 'core/party/party.dart';
 import 'core/party/party_list_screen.dart';
 import 'core/system/providers.dart';
+import 'features/accounting/approvals_screen.dart';
 import 'features/accounting/audit_trail_screen.dart';
 import 'features/accounting/bank_accounts_screen.dart';
 import 'features/accounting/cash_book_screen.dart';
+import 'features/accounting/fixed_assets_screen.dart';
 import 'features/accounting/profit_and_loss_screen.dart';
 import 'features/accounting/trial_balance_screen.dart';
 import 'features/activity/assets_screen.dart';
@@ -21,6 +23,8 @@ import 'features/spare_parts/inventory/product_list_screen.dart';
 import 'features/spare_parts/purchases/purchase_entry_screen.dart';
 import 'features/spare_parts/sales/sale_entry_screen.dart';
 import 'features/sync/sync_status_screen.dart';
+import 'features/tenant/business_switcher_screen.dart';
+import 'features/tenant/cross_business_dashboard_screen.dart';
 import 'features/transport/contracts_screen.dart';
 import 'features/transport/driver_performance_screen.dart';
 
@@ -70,6 +74,9 @@ class _AppShellState extends ConsumerState<AppShell> {
     (icon: Icons.description_outlined, label: 'Contracts'),
     (icon: Icons.alt_route_outlined, label: 'Haul Trips'),
     (icon: Icons.sync_outlined, label: 'Sync Status'),
+    (icon: Icons.precision_manufacturing_outlined, label: 'Fixed Assets'),
+    (icon: Icons.fact_check_outlined, label: 'Approvals'),
+    (icon: Icons.dashboard_customize_outlined, label: 'All Businesses'),
   ];
 
   Widget _buildBody() {
@@ -123,6 +130,12 @@ class _AppShellState extends ConsumerState<AppShell> {
         return const TripsScreen(tripType: TripType.transport);
       case 18:
         return const SyncStatusScreen();
+      case 19:
+        return const FixedAssetsScreen();
+      case 20:
+        return const ApprovalsScreen();
+      case 21:
+        return const CrossBusinessDashboardScreen();
       default:
         return const DashboardScreen();
     }
@@ -148,6 +161,13 @@ class _AppShellState extends ConsumerState<AppShell> {
                   children: [
                     const Icon(Icons.business, size: 32),
                     const SizedBox(height: 8),
+                    IconButton(
+                      icon: const Icon(Icons.swap_horiz, size: 18),
+                      tooltip: 'Switch Business',
+                      onPressed: () => Navigator.of(context).push(
+                        MaterialPageRoute(builder: (_) => const BusinessSwitcherScreen()),
+                      ),
+                    ),
                     IconButton(
                       icon: const Icon(Icons.logout, size: 18),
                       tooltip: 'Sign out',

@@ -13,6 +13,7 @@ const List<(String, String, AccountType)> _seedAccounts = [
   ('1030', 'Accounts Receivable', AccountType.asset),
   ('1040', 'Inventory', AccountType.asset),
   ('1050', 'Fixed Assets', AccountType.asset),
+  ('1060', 'Accumulated Depreciation', AccountType.asset),
   ('2010', 'Accounts Payable', AccountType.liability),
   ('2020', 'Tax Payable', AccountType.liability),
   ('3010', "Owner's Capital", AccountType.equity),
@@ -29,17 +30,17 @@ const List<(String, String, AccountType)> _seedAccounts = [
   ('5060', 'Repair Expense', AccountType.expense),
   ('5070', 'Tyre Expense', AccountType.expense),
   ('5080', 'Oil Change Expense', AccountType.expense),
+  ('5090', 'Depreciation Expense', AccountType.expense),
 ];
 
+/// Idempotent: inserts any seed account that doesn't already exist for
+/// [businessId] (by `(business_id, code)`), and leaves existing accounts
+/// untouched. Using `INSERT OR IGNORE` against the table's unique
+/// constraint — rather than bailing out entirely if *any* account
+/// exists — means a database seeded under an earlier phase picks up
+/// newly added accounts (e.g. Phase 6's Depreciation accounts) the next
+/// time the app runs, without a separate migration step.
 Future<void> seedChartOfAccounts(Database db, String businessId) async {
-  final existing = await db.query(
-    Account.tableName,
-    where: 'business_id = ?',
-    whereArgs: [businessId],
-    limit: 1,
-  );
-  if (existing.isNotEmpty) return;
-
   final now = DateTime.now();
   await db.transaction((txn) async {
     for (final seed in _seedAccounts) {
@@ -53,7 +54,11 @@ Future<void> seedChartOfAccounts(Database db, String businessId) async {
         createdAt: now,
         updatedAt: now,
       );
-      await txn.insert(Account.tableName, account.toMap());
+      await txn.insert(
+        Account.tableName,
+        account.toMap(),
+        conflictAlgorithm: ConflictAlgorithm.ignore,
+      );
     }
   });
 }

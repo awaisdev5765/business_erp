@@ -1,4 +1,8 @@
-enum SaleStatus { posted, returned, void_ }
+/// `pendingApproval`: a credit sale above the business's configured
+/// ApprovalThreshold — created but not yet posted (no stock movement, no
+/// JournalEntry) until SaleRepository.approve() runs. See PHASES.md
+/// Phase 6.
+enum SaleStatus { posted, pendingApproval, returned, void_ }
 
 enum PaymentMethod { cash, credit }
 

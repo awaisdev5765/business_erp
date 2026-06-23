@@ -195,7 +195,56 @@ the top of `firestore.rules`:
       with zero network," which the existing 42 tests already cover —
       proving the upload path against a second real client is next)
 
-## Phase 6+ — see full roadmap
-Multi-currency, Fixed Assets/Depreciation, Approval workflows, Payroll,
-rollup tables for 100k+ row performance, Super Admin cross-business
-dashboard, SaaS expansion (billing, white-labeling, tenant self-service).
+## Phase 6 — Fixed Assets/Depreciation, Approval Workflows, Business Switcher (DONE)
+Splitting the original "Phase 6+ roadmap" bucket into concrete phases.
+Scope chosen for what's highest-value given what already exists:
+`OperatingAsset` (boats/vehicles) are literally fixed assets that
+depreciate, so a Fixed Asset Register is a natural extension, not a new
+concept; Approval Workflows close a real control gap (every Sale/
+TripIncome posts immediately, no matter the amount); and a Business
+Switcher is overdue — the app has supported multiple businesses
+architecturally since Phase 0, but the UI has only ever shown one.
+Multi-currency, Payroll, 100k+-row rollup tables, and SaaS expansion
+(billing/white-labeling/tenant self-service) are bigger, more speculative
+undertakings, deferred to Phase 7+.
+
+- [x] Fixed Asset Register (`FixedAsset`/`FixedAssetRepository`) — links
+      to an `OperatingAsset` (boat/vehicle) or stands alone (e.g. shop
+      equipment); tracks acquisition cost, date, useful life, salvage
+      value; `bookValue()` floors at salvage value
+- [x] Straight-line Depreciation Schedule (`DepreciationService`),
+      posted monthly: Dr Depreciation Expense(5090) / Cr Accumulated
+      Depreciation(1060), tagged to the linked OperatingAsset as the
+      journal line's dimension. The *scheduled* last month (by entry
+      count vs. `usefulLifeMonths`, not just "remaining < one month's
+      amount") absorbs the integer-division rounding remainder — caught
+      a real bug here where 100 over 3 months left a phantom 4th month
+      because remaining (34) was briefly *larger* than one month's
+      amount (33), so the original "cap if remaining is smaller" check
+      never fired
+- [x] Approval Workflow (`ApprovalThreshold`/`ApprovalThresholdRepository`)
+      wired into `SaleRepository`: a credit sale above the business's
+      configured threshold is created `pendingApproval` (no stock
+      movement, no JournalEntry) until `SaleRepository.approve()` runs.
+      Re-validates stock at approval time, not just at creation — a
+      pending sale can sit for a while, and another sale may have
+      consumed the same stock in the meantime; covered by a test.
+      **Not yet applied to TripIncome** — identical mechanical pattern,
+      deferred rather than duplicating the same logic twice in one phase
+- [x] Business Switcher (`BusinessRepository`, `BusinessSwitcherScreen`,
+      `selectedBusinessIdProvider`) — replacing the Phase 0-5 "boots into
+      one auto-seeded business" placeholder. Creating a business also
+      grants the creating user's Firestore profile access to it
+      (`UserProfileRepository.grantAccess`), so it's visible under
+      `firestore.rules` once synced
+- [x] Super Admin cross-business dashboard (`CrossBusinessDashboardScreen`)
+      — read-only rollup (cash position, revenue) across every business
+      in the local database, gated on `UserProfile.isSuperAdmin`; never
+      commingles each business's actual ledgers
+- [x] Fixed Assets and Approvals screens wired into the nav shell
+- [x] Tests: 11 new (4 depreciation, 7 approval workflow), 53 total —
+      all passing, `flutter analyze` clean
+
+## Phase 7+ — see full roadmap
+Multi-currency, Payroll, rollup tables for 100k+ row performance, SaaS
+expansion (billing, white-labeling, tenant self-service onboarding).

@@ -13,8 +13,10 @@ import '../../features/spare_parts/sales/sale.dart';
 import '../../features/transport/contract.dart';
 import '../../features/transport/trip_income.dart';
 import '../accounting/account.dart';
+import '../accounting/approval_threshold.dart';
 import '../accounting/bank_account.dart';
 import '../accounting/fiscal_period.dart';
+import '../accounting/fixed_asset.dart';
 import '../accounting/journal_entry.dart';
 import '../accounting/tax_rate.dart';
 import '../activity/trip.dart';
@@ -121,4 +123,9 @@ Future<void> createSchema(DatabaseExecutor db) async {
   await db.execute(SyncQueueItem.createIndexSql);
   await db.execute(ConflictRecord.createTableSql);
   await db.execute(ConflictRecord.createIndexSql);
+  await db.execute(FixedAsset.createTableSql);
+  await db.execute(FixedAsset.createIndexSql);
+  await db.execute(DepreciationEntry.createTableSql);
+  await db.execute(DepreciationEntry.createIndexSql);
+  await db.execute(ApprovalThreshold.createTableSql);
 }

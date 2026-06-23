@@ -38,4 +38,16 @@ class UserProfileRepository {
     await _users.doc(uid).set(profile.toMap());
     return profile;
   }
+
+  /// Grants [role] on [businessId] to [uid] — called when a new Business
+  /// is created via the Business Switcher, so the creating user's
+  /// `/users/{uid}` profile (and therefore `firestore.rules`) actually
+  /// permits them to read/write it. Without this, a newly created
+  /// business would be invisible to its own creator once synced.
+  Future<void> grantAccess({required String uid, required String businessId, required String role}) async {
+    final profile = await find(uid);
+    if (profile == null) return;
+    final updated = profile.copyWithAccess(businessId, role);
+    await _users.doc(uid).set(updated.toMap());
+  }
 }

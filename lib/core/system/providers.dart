@@ -4,20 +4,25 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:uuid/uuid.dart';
 
+import '../accounting/approval_threshold_repository.dart';
 import '../accounting/bank_account_repository.dart';
 import '../accounting/chart_of_accounts_seed.dart';
+import '../accounting/depreciation_service.dart';
 import '../accounting/fiscal_period_repository.dart';
+import '../accounting/fixed_asset_repository.dart';
 import '../accounting/ledger_repository.dart';
 import '../accounting/tax_rate_repository.dart';
 import '../activity/trip_expense_repository.dart';
 import '../activity/trip_repository.dart';
 import '../asset/operating_asset_repository.dart';
+import '../identity/user_profile.dart';
 import '../identity/user_profile_repository.dart';
 import '../party/party_repository.dart';
 import '../sync/conflict_record_repository.dart';
 import '../sync/firestore_sync_service.dart';
 import '../sync/sync_queue_repository.dart';
 import '../tenant/business.dart';
+import '../tenant/business_repository.dart';
 import '../transaction/payment_repository.dart';
 import '../../features/fishery/catch_repository.dart';
 import '../../features/fishery/fish_sale_repository.dart';
@@ -35,20 +40,33 @@ import 'number_sequence_service.dart';
 
 const _uuid = Uuid();
 
-/// Single demo business + single device/user identity for Phase 1. Real
-/// multi-business switching and auth land in Phase 5 (see PHASES.md) —
-/// until then, the app boots straight into one seeded business so the
-/// transactional screens are usable end-to-end.
 final databaseProvider = FutureProvider<Database>((ref) async {
   final db = await AppDatabase.open();
   return db;
 });
 
+/// User-selected active business — null means "no explicit choice yet,
+/// fall back to whatever currentBusinessIdProvider's auto-seed logic
+/// picks." Set by the Business Switcher (Phase 6); every screen already
+/// reads the *result* via currentBusinessIdProvider, so switching just
+/// means setting this and letting that provider's reactivity do the rest
+/// — no screen needed to change.
+final selectedBusinessIdProvider = StateProvider<String?>((ref) => null);
+
 final currentBusinessIdProvider = FutureProvider<String>((ref) async {
   final db = await ref.watch(databaseProvider.future);
+
+  final selected = ref.watch(selectedBusinessIdProvider);
+  if (selected != null) {
+    await seedChartOfAccounts(db, selected); // idempotent top-up, see seedChartOfAccounts
+    return selected;
+  }
+
   final rows = await db.query(Business.tableName, limit: 1);
   if (rows.isNotEmpty) {
-    return rows.first['uuid'] as String;
+    final businessId = rows.first['uuid'] as String;
+    await seedChartOfAccounts(db, businessId);
+    return businessId;
   }
 
   final now = DateTime.now();
@@ -62,6 +80,11 @@ final currentBusinessIdProvider = FutureProvider<String>((ref) async {
   await db.insert(Business.tableName, business.toMap());
   await seedChartOfAccounts(db, business.uuid);
   return business.uuid;
+});
+
+final businessRepositoryProvider = FutureProvider<BusinessRepository>((ref) async {
+  final db = await ref.watch(databaseProvider.future);
+  return BusinessRepository(db);
 });
 
 /// The signed-in user's email (falling back to their uid). Read fresh on
@@ -82,6 +105,16 @@ final userProfileRepositoryProvider = Provider<UserProfileRepository>((ref) {
   return UserProfileRepository(ref.watch(firestoreProvider));
 });
 
+/// The signed-in user's Firestore profile (role/businessAccess/Super
+/// Admin flag) — null if signed out. Used to gate Super-Admin-only UI
+/// like the cross-business dashboard.
+final currentUserProfileProvider = FutureProvider<UserProfile?>((ref) async {
+  final user = FirebaseAuth.instance.currentUser;
+  if (user == null) return null;
+  final repo = ref.watch(userProfileRepositoryProvider);
+  return repo.find(user.uid);
+});
+
 final firestoreSyncServiceProvider = FutureProvider<FirestoreSyncService>((ref) async {
   final db = await ref.watch(databaseProvider.future);
   final firestore = ref.watch(firestoreProvider);
@@ -93,6 +126,23 @@ final firestoreSyncServiceProvider = FutureProvider<FirestoreSyncService>((ref) 
 final fiscalPeriodRepositoryProvider = FutureProvider<FiscalPeriodRepository>((ref) async {
   final db = await ref.watch(databaseProvider.future);
   return FiscalPeriodRepository(db);
+});
+
+final fixedAssetRepositoryProvider = FutureProvider<FixedAssetRepository>((ref) async {
+  final db = await ref.watch(databaseProvider.future);
+  return FixedAssetRepository(db);
+});
+
+final approvalThresholdRepositoryProvider = FutureProvider<ApprovalThresholdRepository>((ref) async {
+  final db = await ref.watch(databaseProvider.future);
+  return ApprovalThresholdRepository(db);
+});
+
+final depreciationServiceProvider = FutureProvider<DepreciationService>((ref) async {
+  final db = await ref.watch(databaseProvider.future);
+  final assets = await ref.watch(fixedAssetRepositoryProvider.future);
+  final ledger = await ref.watch(ledgerRepositoryProvider.future);
+  return DepreciationService(db, assets, ledger);
 });
 
 final auditLogRepositoryProvider = FutureProvider<AuditLogRepository>((ref) async {
@@ -156,7 +206,8 @@ final saleRepositoryProvider = FutureProvider<SaleRepository>((ref) async {
   final ledger = await ref.watch(ledgerRepositoryProvider.future);
   final products = await ref.watch(productRepositoryProvider.future);
   final numbering = await ref.watch(numberSequenceServiceProvider.future);
-  return SaleRepository(db, ledger, products, numbering);
+  final approvalThresholds = await ref.watch(approvalThresholdRepositoryProvider.future);
+  return SaleRepository(db, ledger, products, numbering, approvalThresholds);
 });
 
 final paymentRepositoryProvider = FutureProvider<PaymentRepository>((ref) async {
