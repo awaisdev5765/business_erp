@@ -91,6 +91,18 @@ final businessRepositoryProvider = FutureProvider<BusinessRepository>((ref) asyn
   return BusinessRepository(db);
 });
 
+/// The full active [Business] record (not just its id) — lets the nav
+/// shell filter destinations by `Business.type` (PHASES.md Phase 9).
+final currentBusinessProvider = FutureProvider<Business>((ref) async {
+  final businessId = await ref.watch(currentBusinessIdProvider.future);
+  final repo = await ref.watch(businessRepositoryProvider.future);
+  final business = await repo.findByUuid(businessId);
+  if (business == null) {
+    throw StateError('Active business $businessId not found');
+  }
+  return business;
+});
+
 /// The signed-in user's email (falling back to their uid). Read fresh on
 /// every call rather than cached, since sign-in/sign-out changes it.
 String get currentUser =>

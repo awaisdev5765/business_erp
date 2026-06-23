@@ -343,3 +343,42 @@ expansion remain in Phase 9+.
       decrement, reversal non-interference, trial balance equivalence,
       party rollup, two rebuild scenarios), 72 total passing,
       `flutter analyze` clean.
+
+## Phase 9 — Business-Type-Aware Navigation (DONE)
+Multi-currency and SaaS expansion (the rest of the "Phase 9+" bucket)
+are both confirmed *not* needed: all three businesses operate in one
+currency, and this app stays private to its own three businesses, never
+resold. That leaves the bucket empty, so Phase 9 instead picks up the
+oldest still-open "Known gap" note, carried since Phase 1/3: the
+NavigationRail has shown every business type's screens side by side
+since Fishery (Phase 3) and Transport (Phase 4) were added, with no
+concept of "this nav item only applies to a Fishery business." Now that
+the Business Switcher (Phase 6) lets you actually switch between
+business types, that gap is a real, daily point of confusion — e.g.
+switching to a Fishery business still shows Sales/Purchases/Products
+(Spare Parts screens) instead of Boats/Crew/Fishing Trips.
+
+- [x] `AppShell`'s destination list (`_Destination`, with an optional
+      `visibleFor: Set<BusinessType>?`) filters by the active business's
+      type via a new `currentBusinessProvider` (the full `Business`
+      record, not just its id). Spare Parts screens only show for
+      `sparePartsShop`; Fishery screens only for `fishery`; Transport
+      screens only for `transport`. Shared screens (`visibleFor: null` —
+      Dashboard, Cash Book, Trial Balance, P&L, Audit Trail, Bank
+      Accounts, Fixed Assets, Approvals, Payroll, Customers, Suppliers,
+      Sync Status, All Businesses) stay visible regardless of type.
+- [x] Switching business re-filters the nav immediately (the filtered
+      list is recomputed on every build from the watched
+      `currentBusinessProvider`) and resets to Dashboard — both right
+      after using the Business Switcher, and defensively via an
+      index-clamp (`selectedIndex < destinations.length ? ... : 0`) in
+      case a stale index ever pointed past a shorter list for the new
+      business's type.
+
+**Testing note:** no dedicated automated test for this — `AppShell`/
+`AuthGate` depend on live `FirebaseAuth`/`Firestore` plugins with no
+widget-test mocking infrastructure set up yet, and the actual new logic
+is a one-line predicate (`visibleFor == null || visibleFor.contains
+(type)`) plus the index-clamp fallback, both verified by inspection
+rather than worth standing up Firebase mocks for. `flutter analyze` is
+clean and the existing 72 tests (none of which touch UI) are unaffected.

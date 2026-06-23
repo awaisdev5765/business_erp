@@ -11,6 +11,7 @@ import 'core/identity/auth_gate.dart';
 import 'core/party/party.dart';
 import 'core/party/party_list_screen.dart';
 import 'core/system/providers.dart';
+import 'core/tenant/business.dart';
 import 'features/accounting/approvals_screen.dart';
 import 'features/accounting/audit_trail_screen.dart';
 import 'features/accounting/bank_accounts_screen.dart';
@@ -46,6 +47,29 @@ class BusinessErpApp extends StatelessWidget {
       home: const AuthGate(child: AppShell()),
     );
   }
+}
+
+/// One nav destination. [visibleFor] is `null` for screens relevant to
+/// every business type (Dashboard, accounting reports, Payroll, Sync
+/// Status...); otherwise it's the set of [BusinessType]s the screen
+/// applies to (Spare Parts screens, Fishery screens, Transport screens).
+/// See PHASES.md Phase 9 — this replaces the long-carried "Known gap"
+/// where every business type's screens showed side by side regardless of
+/// which business was actually active.
+class _Destination {
+  const _Destination({
+    required this.icon,
+    required this.label,
+    required this.builder,
+    this.visibleFor,
+  });
+
+  final IconData icon;
+  final String label;
+  final Widget Function() builder;
+  final Set<BusinessType>? visibleFor;
+
+  bool appliesTo(BusinessType type) => visibleFor == null || visibleFor!.contains(type);
 }
 
 class AppShell extends ConsumerStatefulWidget {
@@ -111,140 +135,159 @@ class _AppShellState extends ConsumerState<AppShell> with WidgetsBindingObserver
     }
   }
 
-  static const _destinations = [
-    (icon: Icons.dashboard_outlined, label: 'Dashboard'),
-    (icon: Icons.point_of_sale_outlined, label: 'Sales'),
-    (icon: Icons.shopping_cart_outlined, label: 'Purchases'),
-    (icon: Icons.inventory_2_outlined, label: 'Products'),
-    (icon: Icons.people_outline, label: 'Customers'),
-    (icon: Icons.local_shipping_outlined, label: 'Suppliers'),
-    (icon: Icons.account_balance_wallet_outlined, label: 'Cash Book'),
-    (icon: Icons.balance_outlined, label: 'Trial Balance'),
-    (icon: Icons.trending_up_outlined, label: 'P&L'),
-    (icon: Icons.history_outlined, label: 'Audit Trail'),
-    (icon: Icons.account_balance_outlined, label: 'Bank Accounts'),
-    (icon: Icons.directions_boat_outlined, label: 'Boats'),
-    (icon: Icons.groups_outlined, label: 'Crew'),
-    (icon: Icons.sailing_outlined, label: 'Fishing Trips'),
-    (icon: Icons.local_shipping_outlined, label: 'Vehicles'),
-    (icon: Icons.badge_outlined, label: 'Drivers'),
-    (icon: Icons.description_outlined, label: 'Contracts'),
-    (icon: Icons.alt_route_outlined, label: 'Haul Trips'),
-    (icon: Icons.sync_outlined, label: 'Sync Status'),
-    (icon: Icons.precision_manufacturing_outlined, label: 'Fixed Assets'),
-    (icon: Icons.fact_check_outlined, label: 'Approvals'),
-    (icon: Icons.dashboard_customize_outlined, label: 'All Businesses'),
-    (icon: Icons.payments_outlined, label: 'Payroll'),
+  static final _allDestinations = <_Destination>[
+    _Destination(icon: Icons.dashboard_outlined, label: 'Dashboard', builder: () => const DashboardScreen()),
+    _Destination(
+      icon: Icons.point_of_sale_outlined,
+      label: 'Sales',
+      visibleFor: const {BusinessType.sparePartsShop},
+      builder: () => const SaleEntryScreen(),
+    ),
+    _Destination(
+      icon: Icons.shopping_cart_outlined,
+      label: 'Purchases',
+      visibleFor: const {BusinessType.sparePartsShop},
+      builder: () => const PurchaseEntryScreen(),
+    ),
+    _Destination(
+      icon: Icons.inventory_2_outlined,
+      label: 'Products',
+      visibleFor: const {BusinessType.sparePartsShop},
+      builder: () => const ProductListScreen(),
+    ),
+    _Destination(
+      icon: Icons.people_outline,
+      label: 'Customers',
+      builder: () => const PartyListScreen(type: PartyType.customer),
+    ),
+    _Destination(
+      icon: Icons.local_shipping_outlined,
+      label: 'Suppliers',
+      builder: () => const PartyListScreen(type: PartyType.supplier),
+    ),
+    _Destination(icon: Icons.account_balance_wallet_outlined, label: 'Cash Book', builder: () => const CashBookScreen()),
+    _Destination(icon: Icons.balance_outlined, label: 'Trial Balance', builder: () => const TrialBalanceScreen()),
+    _Destination(icon: Icons.trending_up_outlined, label: 'P&L', builder: () => const ProfitAndLossScreen()),
+    _Destination(icon: Icons.history_outlined, label: 'Audit Trail', builder: () => const AuditTrailScreen()),
+    _Destination(icon: Icons.account_balance_outlined, label: 'Bank Accounts', builder: () => const BankAccountsScreen()),
+    _Destination(
+      icon: Icons.directions_boat_outlined,
+      label: 'Boats',
+      visibleFor: const {BusinessType.fishery},
+      builder: () => const AssetsScreen(assetType: OperatingAssetType.boat),
+    ),
+    _Destination(
+      icon: Icons.groups_outlined,
+      label: 'Crew',
+      visibleFor: const {BusinessType.fishery},
+      builder: () => CrewScreen(
+        title: 'Captains & Crew',
+        roles: const [PartyType.captain, PartyType.crew],
+        roleLabels: const {PartyType.captain: 'Captain', PartyType.crew: 'Crew'},
+      ),
+    ),
+    _Destination(
+      icon: Icons.sailing_outlined,
+      label: 'Fishing Trips',
+      visibleFor: const {BusinessType.fishery},
+      builder: () => const TripsScreen(tripType: TripType.fishery),
+    ),
+    _Destination(
+      icon: Icons.local_shipping_outlined,
+      label: 'Vehicles',
+      visibleFor: const {BusinessType.transport},
+      builder: () => const AssetsScreen(assetType: OperatingAssetType.vehicle),
+    ),
+    _Destination(
+      icon: Icons.badge_outlined,
+      label: 'Drivers',
+      visibleFor: const {BusinessType.transport},
+      builder: () => CrewScreen(
+        title: 'Drivers',
+        roles: const [PartyType.driver],
+        roleLabels: const {PartyType.driver: 'Driver'},
+        onTapPerson: (context, person) => Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => DriverPerformanceScreen(driver: person)),
+        ),
+      ),
+    ),
+    _Destination(
+      icon: Icons.description_outlined,
+      label: 'Contracts',
+      visibleFor: const {BusinessType.transport},
+      builder: () => const ContractsScreen(),
+    ),
+    _Destination(
+      icon: Icons.alt_route_outlined,
+      label: 'Haul Trips',
+      visibleFor: const {BusinessType.transport},
+      builder: () => const TripsScreen(tripType: TripType.transport),
+    ),
+    _Destination(icon: Icons.sync_outlined, label: 'Sync Status', builder: () => const SyncStatusScreen()),
+    _Destination(icon: Icons.precision_manufacturing_outlined, label: 'Fixed Assets', builder: () => const FixedAssetsScreen()),
+    _Destination(icon: Icons.fact_check_outlined, label: 'Approvals', builder: () => const ApprovalsScreen()),
+    _Destination(icon: Icons.dashboard_customize_outlined, label: 'All Businesses', builder: () => const CrossBusinessDashboardScreen()),
+    _Destination(icon: Icons.payments_outlined, label: 'Payroll', builder: () => const PayrollScreen()),
   ];
-
-  Widget _buildBody() {
-    switch (_selectedIndex) {
-      case 0:
-        return const DashboardScreen();
-      case 1:
-        return const SaleEntryScreen();
-      case 2:
-        return const PurchaseEntryScreen();
-      case 3:
-        return const ProductListScreen();
-      case 4:
-        return const PartyListScreen(type: PartyType.customer);
-      case 5:
-        return const PartyListScreen(type: PartyType.supplier);
-      case 6:
-        return const CashBookScreen();
-      case 7:
-        return const TrialBalanceScreen();
-      case 8:
-        return const ProfitAndLossScreen();
-      case 9:
-        return const AuditTrailScreen();
-      case 10:
-        return const BankAccountsScreen();
-      case 11:
-        return const AssetsScreen(assetType: OperatingAssetType.boat);
-      case 12:
-        return CrewScreen(
-          title: 'Captains & Crew',
-          roles: const [PartyType.captain, PartyType.crew],
-          roleLabels: const {PartyType.captain: 'Captain', PartyType.crew: 'Crew'},
-        );
-      case 13:
-        return const TripsScreen(tripType: TripType.fishery);
-      case 14:
-        return const AssetsScreen(assetType: OperatingAssetType.vehicle);
-      case 15:
-        return CrewScreen(
-          title: 'Drivers',
-          roles: const [PartyType.driver],
-          roleLabels: const {PartyType.driver: 'Driver'},
-          onTapPerson: (context, person) => Navigator.of(context).push(
-            MaterialPageRoute(builder: (_) => DriverPerformanceScreen(driver: person)),
-          ),
-        );
-      case 16:
-        return const ContractsScreen();
-      case 17:
-        return const TripsScreen(tripType: TripType.transport);
-      case 18:
-        return const SyncStatusScreen();
-      case 19:
-        return const FixedAssetsScreen();
-      case 20:
-        return const ApprovalsScreen();
-      case 21:
-        return const CrossBusinessDashboardScreen();
-      case 22:
-        return const PayrollScreen();
-      default:
-        return const DashboardScreen();
-    }
-  }
 
   @override
   Widget build(BuildContext context) {
-    final businessId = ref.watch(currentBusinessIdProvider);
+    final business = ref.watch(currentBusinessProvider);
 
-    return businessId.when(
+    return business.when(
       loading: () => const Scaffold(body: Center(child: CircularProgressIndicator())),
       error: (e, st) => Scaffold(body: Center(child: Text('Failed to start: $e'))),
-      data: (_) => Scaffold(
-        body: Row(
-          children: [
-            NavigationRail(
-              selectedIndex: _selectedIndex,
-              onDestinationSelected: (i) => setState(() => _selectedIndex = i),
-              labelType: NavigationRailLabelType.all,
-              leading: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                child: Column(
-                  children: [
-                    const Icon(Icons.business, size: 32),
-                    const SizedBox(height: 8),
-                    IconButton(
-                      icon: const Icon(Icons.swap_horiz, size: 18),
-                      tooltip: 'Switch Business',
-                      onPressed: () => Navigator.of(context).push(
-                        MaterialPageRoute(builder: (_) => const BusinessSwitcherScreen()),
+      data: (business) {
+        final destinations = _allDestinations.where((d) => d.appliesTo(business.type)).toList();
+        // The previously-selected index can point past the end (or at a
+        // now-hidden screen) right after switching to a business of a
+        // different type — fall back to Dashboard rather than crash.
+        final selectedIndex = _selectedIndex < destinations.length ? _selectedIndex : 0;
+
+        return Scaffold(
+          body: Row(
+            children: [
+              NavigationRail(
+                selectedIndex: selectedIndex,
+                onDestinationSelected: (i) => setState(() => _selectedIndex = i),
+                labelType: NavigationRailLabelType.all,
+                leading: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  child: Column(
+                    children: [
+                      const Icon(Icons.business, size: 32),
+                      const SizedBox(height: 8),
+                      IconButton(
+                        icon: const Icon(Icons.swap_horiz, size: 18),
+                        tooltip: 'Switch Business',
+                        onPressed: () async {
+                          await Navigator.of(context).push(
+                            MaterialPageRoute(builder: (_) => const BusinessSwitcherScreen()),
+                          );
+                          // The new business's type may not have this
+                          // many destinations — reset to Dashboard rather
+                          // than risk a stale index.
+                          if (mounted) setState(() => _selectedIndex = 0);
+                        },
                       ),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.logout, size: 18),
-                      tooltip: 'Sign out',
-                      onPressed: () => FirebaseAuth.instance.signOut(),
-                    ),
-                  ],
+                      IconButton(
+                        icon: const Icon(Icons.logout, size: 18),
+                        tooltip: 'Sign out',
+                        onPressed: () => FirebaseAuth.instance.signOut(),
+                      ),
+                    ],
+                  ),
                 ),
+                destinations: destinations
+                    .map((d) => NavigationRailDestination(icon: Icon(d.icon), label: Text(d.label)))
+                    .toList(),
               ),
-              destinations: _destinations
-                  .map((d) => NavigationRailDestination(icon: Icon(d.icon), label: Text(d.label)))
-                  .toList(),
-            ),
-            const VerticalDivider(width: 1),
-            Expanded(child: _buildBody()),
-          ],
-        ),
-      ),
+              const VerticalDivider(width: 1),
+              Expanded(child: destinations[selectedIndex].builder()),
+            ],
+          ),
+        );
+      },
     );
   }
 }
