@@ -1,4 +1,8 @@
-enum PartyType { customer, supplier, captain, crew, driver }
+/// `employee` is a generic role for paid staff who aren't already
+/// Captain/Crew/Driver (Cashier, Accountant, Store Keeper, Manager) —
+/// see PHASES.md Phase 7. Salary records work for *any* PartyType,
+/// including Captain/Crew/Driver, since they need salaries too.
+enum PartyType { customer, supplier, captain, crew, driver, employee }
 
 /// A Customer and a Supplier are both "a counterparty with a ledger" — same
 /// fields, different `type` and default account mapping. Unifying them

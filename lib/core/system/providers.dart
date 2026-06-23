@@ -26,6 +26,7 @@ import '../sync/sync_queue_repository.dart';
 import '../tenant/business.dart';
 import '../tenant/business_repository.dart';
 import '../transaction/payment_repository.dart';
+import '../transaction/salary_repository.dart';
 import '../../features/fishery/catch_repository.dart';
 import '../../features/fishery/fish_sale_repository.dart';
 import '../../features/fishery/trip_profit_service.dart';
@@ -156,6 +157,12 @@ final depreciationServiceProvider = FutureProvider<DepreciationService>((ref) as
   final assets = await ref.watch(fixedAssetRepositoryProvider.future);
   final ledger = await ref.watch(ledgerRepositoryProvider.future);
   return DepreciationService(db, assets, ledger);
+});
+
+final salaryRepositoryProvider = FutureProvider<SalaryRepository>((ref) async {
+  final db = await ref.watch(databaseProvider.future);
+  final ledger = await ref.watch(ledgerRepositoryProvider.future);
+  return SalaryRepository(db, ledger);
 });
 
 final auditLogRepositoryProvider = FutureProvider<AuditLogRepository>((ref) async {

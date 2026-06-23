@@ -83,6 +83,20 @@ class PartyRepository {
     return rows.map(Party.fromMap).toList();
   }
 
+  /// Every Party who could plausibly be on payroll — Captains/Crew/
+  /// Drivers need salaries same as the generic `employee` role. See
+  /// PHASES.md Phase 7.
+  Future<List<Party>> listStaff({required String businessId}) async {
+    const staffTypes = [PartyType.employee, PartyType.captain, PartyType.crew, PartyType.driver];
+    final rows = await db.query(
+      Party.tableName,
+      where: 'business_id = ? AND type IN (?, ?, ?, ?) AND is_active = 1',
+      whereArgs: [businessId, ...staffTypes.map((t) => t.name)],
+      orderBy: 'name ASC',
+    );
+    return rows.map(Party.fromMap).toList();
+  }
+
   Future<Party?> findByUuid(String uuid) async {
     final rows = await db.query(
       Party.tableName,

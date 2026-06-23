@@ -269,6 +269,30 @@ undertakings, deferred to Phase 7+.
 - [x] Tests: 11 new (4 depreciation, 7 approval workflow), 53 total —
       all passing, `flutter analyze` clean
 
-## Phase 7+ — see full roadmap
-Multi-currency, Payroll, rollup tables for 100k+ row performance, SaaS
-expansion (billing, white-labeling, tenant self-service onboarding).
+## Phase 7 — Payroll (DONE)
+Splitting Payroll out of the "Phase 7+" bucket as its own phase — it's
+the most concretely overdue item, called out as a deferred gap in
+comments scattered across Crew/Driver screens since Phase 3
+("salary tracking is Payroll, a later phase"). Multi-currency, 100k+-row
+rollup tables, and SaaS expansion (billing/white-labeling/tenant
+self-service) remain in Phase 8+ — bigger, more speculative, and less
+clearly needed by the three businesses this app is actually built for.
+
+- [x] `PartyType.employee` — a generic role for paid staff who aren't
+      already Captain/Crew/Driver (Cashier, Accountant, Store Keeper,
+      Manager); `PartyRepository.listStaff()` pulls all four
+      salary-eligible types together for the Payroll screen
+- [x] New COA account: Salary Expense (5100)
+- [x] `SalaryRecord`/`SalaryRepository` — standing monthly salary terms
+      for one Party (any type). `paySalary()` posts Dr Salary Expense
+      (5100) / Cr Cash(1010), tagged to the employee as the journal
+      line's `partyUuid` (so it surfaces in their Party Ledger
+      statement of account for free), with a unique `(salary_record_
+      uuid, period)` constraint preventing double-payment — same
+      pattern as `DepreciationEntry`
+- [x] Payroll UI (`PayrollScreen`) — lists every salary-eligible Party,
+      "Set Salary" for those without a record yet, "Pay" / "Paid
+      (YYYY-MM)" per current period for those with one
+- [x] Tests: 4 new (covers posting correctness, Captain/Crew/Driver
+      eligibility — not just `employee` — double-payment rejection, and
+      multi-period payment), 64 total passing, `flutter analyze` clean

@@ -27,6 +27,7 @@ import '../sync/conflict_record.dart';
 import '../sync/sync_queue_item.dart';
 import '../tenant/business.dart';
 import '../transaction/payment.dart';
+import '../transaction/salary_record.dart';
 import 'audit_log.dart';
 import 'number_sequence.dart';
 
@@ -128,4 +129,8 @@ Future<void> createSchema(DatabaseExecutor db) async {
   await db.execute(DepreciationEntry.createTableSql);
   await db.execute(DepreciationEntry.createIndexSql);
   await db.execute(ApprovalThreshold.createTableSql);
+  await db.execute(SalaryRecord.createTableSql);
+  await db.execute(SalaryRecord.createIndexSql);
+  await db.execute(SalaryPayment.createTableSql);
+  await db.execute(SalaryPayment.createIndexSql);
 }

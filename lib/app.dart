@@ -22,6 +22,7 @@ import 'features/activity/assets_screen.dart';
 import 'features/activity/crew_screen.dart';
 import 'features/activity/trips_screen.dart';
 import 'features/dashboard/dashboard_screen.dart';
+import 'features/payroll/payroll_screen.dart';
 import 'features/spare_parts/inventory/product_list_screen.dart';
 import 'features/spare_parts/purchases/purchase_entry_screen.dart';
 import 'features/spare_parts/sales/sale_entry_screen.dart';
@@ -133,6 +134,7 @@ class _AppShellState extends ConsumerState<AppShell> with WidgetsBindingObserver
     (icon: Icons.precision_manufacturing_outlined, label: 'Fixed Assets'),
     (icon: Icons.fact_check_outlined, label: 'Approvals'),
     (icon: Icons.dashboard_customize_outlined, label: 'All Businesses'),
+    (icon: Icons.payments_outlined, label: 'Payroll'),
   ];
 
   Widget _buildBody() {
@@ -192,6 +194,8 @@ class _AppShellState extends ConsumerState<AppShell> with WidgetsBindingObserver
         return const ApprovalsScreen();
       case 21:
         return const CrossBusinessDashboardScreen();
+      case 22:
+        return const PayrollScreen();
       default:
         return const DashboardScreen();
     }
