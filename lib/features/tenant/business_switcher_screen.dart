@@ -95,11 +95,13 @@ class _BusinessSwitcherScreenState extends ConsumerState<BusinessSwitcherScreen>
           ? FloatingActionButton(onPressed: _showCreateDialog, child: const Icon(Icons.add))
           : null,
       body: businesses != null && businesses.isEmpty
-          ? const Center(
+          ? Center(
               child: Padding(
-                padding: EdgeInsets.all(24),
+                padding: const EdgeInsets.all(24),
                 child: Text(
-                  'No business assigned yet. Contact your administrator.',
+                  isSuperAdmin
+                      ? 'No business yet — tap + to create one.'
+                      : 'No business assigned yet. Contact your administrator.',
                   textAlign: TextAlign.center,
                 ),
               ),

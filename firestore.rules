@@ -67,7 +67,12 @@ service cloud.firestore {
     // cannot self-grant either. Granting/revoking business access after
     // that first write is a Super Admin action only.
     match /users/{userId} {
-      allow read: if isSignedIn() && request.auth.uid == userId;
+      // A user reads their own profile (every other rule here needs
+      // that); a Super Admin can also read/list every profile — that's
+      // what StaffManagementScreen's "Team" roster query needs, and
+      // without it that query is silently rejected by these rules
+      // (the screen just renders an empty list, not an error).
+      allow read: if isSignedIn() && (request.auth.uid == userId || isSuperAdmin());
       allow create: if isSignedIn() && request.auth.uid == userId &&
         request.resource.data.businessAccess.size() == 0 &&
         request.resource.data.isSuperAdmin == (request.auth.token.email.lower() == 'superadmin@berp.com');

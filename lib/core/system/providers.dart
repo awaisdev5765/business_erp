@@ -3,7 +3,6 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:sqflite/sqflite.dart';
-import 'package:uuid/uuid.dart';
 
 import '../accounting/approval_threshold_repository.dart';
 import '../accounting/balance_rollup_repository.dart';
@@ -43,8 +42,6 @@ import 'audit_log_repository.dart';
 import 'database.dart';
 import 'number_sequence_service.dart';
 
-const _uuid = Uuid();
-
 final databaseProvider = FutureProvider<Database>((ref) async {
   final db = await AppDatabase.open();
   return db;
@@ -58,6 +55,16 @@ final databaseProvider = FutureProvider<Database>((ref) async {
 /// — no screen needed to change.
 final selectedBusinessIdProvider = StateProvider<String?>((ref) => null);
 
+/// Thrown by [currentBusinessIdProvider] when the local database has no
+/// Business rows at all yet — distinct from "this signed-in user has no
+/// *access* to any business" (accessibleBusinessesProvider's empty
+/// list), since the right UI response differs: a Super Admin should see
+/// "create your first business," not "contact your administrator."
+class NoBusinessExistsException implements Exception {
+  @override
+  String toString() => 'No business has been created yet.';
+}
+
 final currentBusinessIdProvider = FutureProvider<String>((ref) async {
   final db = await ref.watch(databaseProvider.future);
 
@@ -67,6 +74,14 @@ final currentBusinessIdProvider = FutureProvider<String>((ref) async {
     return selected;
   }
 
+  // Auto-pick whichever business happens to be first locally — this is
+  // just "which one is active by default," never a reason to *create*
+  // one. Businesses are created exclusively through the Business
+  // Switcher / Super Admin flow, with a name and type the Super Admin
+  // actually chose (see PHASES.md's post-launch Identity work — auto-
+  // seeding a generic "My Spare Parts Shop" on first sign-in was wrong:
+  // it happened for *any* signed-in user, staff included, before they'd
+  // even seen the app).
   final rows = await db.query(Business.tableName, limit: 1);
   if (rows.isNotEmpty) {
     final businessId = rows.first['uuid'] as String;
@@ -74,17 +89,7 @@ final currentBusinessIdProvider = FutureProvider<String>((ref) async {
     return businessId;
   }
 
-  final now = DateTime.now();
-  final business = Business(
-    uuid: _uuid.v4(),
-    name: 'My Spare Parts Shop',
-    type: BusinessType.sparePartsShop,
-    createdAt: now,
-    updatedAt: now,
-  );
-  await db.insert(Business.tableName, business.toMap());
-  await seedChartOfAccounts(db, business.uuid);
-  return business.uuid;
+  throw NoBusinessExistsException();
 });
 
 final businessRepositoryProvider = FutureProvider<BusinessRepository>((ref) async {

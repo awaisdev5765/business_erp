@@ -19,14 +19,11 @@ class UserProfileRepository {
   /// to [kSuperAdminEmail], not "first to sign up" — staff accounts are
   /// now created by the Super Admin (see StaffManagementScreen), so
   /// `businessAccess` starts empty for everyone and is only ever
-  /// populated by `grantAccess`. [localBusinessId] is unused for staff;
-  /// kept only so the Super Admin's very first sign-in has a business to
-  /// land on before any are created. Idempotent: does nothing if a
-  /// profile already exists.
+  /// populated by `grantAccess`. Idempotent: does nothing if a profile
+  /// already exists.
   Future<UserProfile> ensureProfile({
     required String uid,
     required String email,
-    required String localBusinessId,
   }) async {
     final existing = await find(uid);
     if (existing != null) return existing;

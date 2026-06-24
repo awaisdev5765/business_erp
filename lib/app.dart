@@ -8,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'core/activity/trip.dart';
 import 'core/asset/operating_asset.dart';
 import 'core/identity/auth_gate.dart';
+import 'core/identity/user_profile.dart';
 import 'core/party/party.dart';
 import 'core/party/party_list_screen.dart';
 import 'core/system/providers.dart';
@@ -76,6 +77,35 @@ class _Destination {
 
   bool appliesTo(BusinessType type) =>
       visibleFor == null || visibleFor!.contains(type);
+}
+
+/// Which sidebar sections a staff role can see — "staff should only see
+/// some of what the Super Admin can see," per the brief. Super Admin
+/// (or a `businessAdmin` grant) always sees everything; `null` `section`
+/// (Dashboard) is always visible to everyone. This only filters the
+/// *nav* — it doesn't (yet) enforce role at the data-write level inside
+/// each screen, since the local SQLite database has no row-level role
+/// checks; that's a real, accepted gap, same category as the
+/// `firestore.rules` header's documented client-validation-only ones.
+const _operationalSections = {'Spare Parts', 'Fishery', 'Transport'};
+const _financialSections = {'Parties', 'Accounting'};
+
+bool _sectionVisibleForRole(String? section, String? role, bool isSuperAdmin) {
+  if (isSuperAdmin || section == null) return true;
+  switch (role) {
+    case 'businessAdmin':
+      return true;
+    case 'cashier':
+      return _operationalSections.contains(section) || section == 'Parties';
+    case 'accountant':
+    case 'readOnlyAuditor':
+      return _financialSections.contains(section) || section == 'Admin';
+    default:
+      // No role on record for this business (shouldn't normally happen
+      // — grantAccess always sets one) — fail toward the narrower,
+      // operational-only view rather than silently showing everything.
+      return _operationalSections.contains(section) || section == 'Parties';
+  }
 }
 
 class AppShell extends ConsumerStatefulWidget {
@@ -369,16 +399,53 @@ class _AppShellState extends ConsumerState<AppShell>
     if (profile.isLoading || accessible.isLoading || business.isLoading) {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
+    final userProfile = profile.value;
+    final isSuperAdmin = userProfile?.isSuperAdmin ?? false;
+
     if (business.hasError) {
+      if (business.error is NoBusinessExistsException) {
+        return Scaffold(
+          body: Center(
+            child: Padding(
+              padding: const EdgeInsets.all(AppSpacing.xl),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.business_outlined, size: 40, color: Colors.grey.shade400),
+                  const SizedBox(height: AppSpacing.lg),
+                  Text(
+                    isSuperAdmin
+                        ? 'No business created yet.'
+                        : 'No business has been set up yet.\nContact your administrator.',
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: AppSpacing.lg),
+                  if (isSuperAdmin)
+                    FilledButton.icon(
+                      onPressed: () => Navigator.of(context).push(
+                        MaterialPageRoute(builder: (_) => const BusinessSwitcherScreen()),
+                      ),
+                      icon: const Icon(Icons.add),
+                      label: const Text('Create Business'),
+                    )
+                  else
+                    TextButton(
+                      onPressed: () => FirebaseAuth.instance.signOut(),
+                      child: const Text('Sign out'),
+                    ),
+                ],
+              ),
+            ),
+          ),
+        );
+      }
       return Scaffold(
         body: Center(child: Text('Failed to start: ${business.error}')),
       );
     }
 
     final activeBusiness = business.value!;
-    final userProfile = profile.value;
     final accessibleBusinesses = accessible.value ?? const [];
-    final isSuperAdmin = userProfile?.isSuperAdmin ?? false;
 
     if (!isSuperAdmin &&
         !accessibleBusinesses.any((b) => b.uuid == activeBusiness.uuid)) {
@@ -421,12 +488,14 @@ class _AppShellState extends ConsumerState<AppShell>
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
-    return _buildShell(context, activeBusiness);
+    return _buildShell(context, activeBusiness, userProfile, isSuperAdmin);
   }
 
-  Widget _buildShell(BuildContext context, Business business) {
+  Widget _buildShell(BuildContext context, Business business, UserProfile? userProfile, bool isSuperAdmin) {
+    final role = userProfile?.businessAccess[business.uuid];
     final destinations = _allDestinations
         .where((d) => d.appliesTo(business.type))
+        .where((d) => _sectionVisibleForRole(d.section, role, isSuperAdmin))
         .toList();
     // The previously-selected index can point past the end (or at a
     // now-hidden screen) right after switching to a business of a

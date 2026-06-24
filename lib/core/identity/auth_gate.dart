@@ -82,12 +82,10 @@ class _AuthGateState extends ConsumerState<AuthGate> {
   }
 
   Future<UserProfile> _ensureProfile(WidgetRef ref, User user) async {
-    final businessId = await ref.read(currentBusinessIdProvider.future);
     final repo = ref.read(userProfileRepositoryProvider);
     final profile = await repo.ensureProfile(
       uid: user.uid,
       email: user.email ?? user.uid,
-      localBusinessId: businessId,
     );
 
     // Best-effort — a denied notification permission or a platform
