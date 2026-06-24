@@ -53,6 +53,9 @@ dependencies:
   # Identifiers and value types
   uuid: ^4.5.1
 
+  # Design system typography (Plus Jakarta Sans — see lib/shared/theme/)
+  google_fonts: ^6.2.1
+
   # Firebase — auth + backup/sync layer only, never the live query target
   # for transactional screens (PHASES.md Section 14). Free Spark plan: no
   # Cloud Functions (PHASES.md Phase 5 note).

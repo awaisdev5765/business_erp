@@ -32,6 +32,8 @@ import 'features/tenant/business_switcher_screen.dart';
 import 'features/tenant/cross_business_dashboard_screen.dart';
 import 'features/transport/contracts_screen.dart';
 import 'features/transport/driver_performance_screen.dart';
+import 'package:business_erp/shared/theme/app_theme.dart';
+import 'shared/widgets/app_sidebar.dart';
 
 class BusinessErpApp extends StatelessWidget {
   const BusinessErpApp({super.key});
@@ -40,10 +42,8 @@ class BusinessErpApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'Business ERP',
-      theme: ThemeData(colorScheme: ColorScheme.fromSeed(seedColor: Colors.indigo)),
-      darkTheme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.indigo, brightness: Brightness.dark),
-      ),
+      theme: AppTheme.light,
+      darkTheme: AppTheme.dark,
       home: const AuthGate(child: AppShell()),
     );
   }
@@ -61,12 +61,16 @@ class _Destination {
     required this.icon,
     required this.label,
     required this.builder,
+    required this.section,
     this.visibleFor,
   });
 
   final IconData icon;
   final String label;
   final Widget Function() builder;
+
+  /// Sidebar group header — see `AppSidebar`/`AppSidebarGroup`.
+  final String? section;
   final Set<BusinessType>? visibleFor;
 
   bool appliesTo(BusinessType type) => visibleFor == null || visibleFor!.contains(type);
@@ -136,49 +140,41 @@ class _AppShellState extends ConsumerState<AppShell> with WidgetsBindingObserver
   }
 
   static final _allDestinations = <_Destination>[
-    _Destination(icon: Icons.dashboard_outlined, label: 'Dashboard', builder: () => const DashboardScreen()),
+    _Destination(icon: Icons.dashboard_outlined, label: 'Dashboard', section: null, builder: () => const DashboardScreen()),
+
+    // --- Operations (exactly one of these three groups shows at a time) ---
     _Destination(
       icon: Icons.point_of_sale_outlined,
       label: 'Sales',
+      section: 'Spare Parts',
       visibleFor: const {BusinessType.sparePartsShop},
       builder: () => const SaleEntryScreen(),
     ),
     _Destination(
       icon: Icons.shopping_cart_outlined,
       label: 'Purchases',
+      section: 'Spare Parts',
       visibleFor: const {BusinessType.sparePartsShop},
       builder: () => const PurchaseEntryScreen(),
     ),
     _Destination(
       icon: Icons.inventory_2_outlined,
       label: 'Products',
+      section: 'Spare Parts',
       visibleFor: const {BusinessType.sparePartsShop},
       builder: () => const ProductListScreen(),
     ),
     _Destination(
-      icon: Icons.people_outline,
-      label: 'Customers',
-      builder: () => const PartyListScreen(type: PartyType.customer),
-    ),
-    _Destination(
-      icon: Icons.local_shipping_outlined,
-      label: 'Suppliers',
-      builder: () => const PartyListScreen(type: PartyType.supplier),
-    ),
-    _Destination(icon: Icons.account_balance_wallet_outlined, label: 'Cash Book', builder: () => const CashBookScreen()),
-    _Destination(icon: Icons.balance_outlined, label: 'Trial Balance', builder: () => const TrialBalanceScreen()),
-    _Destination(icon: Icons.trending_up_outlined, label: 'P&L', builder: () => const ProfitAndLossScreen()),
-    _Destination(icon: Icons.history_outlined, label: 'Audit Trail', builder: () => const AuditTrailScreen()),
-    _Destination(icon: Icons.account_balance_outlined, label: 'Bank Accounts', builder: () => const BankAccountsScreen()),
-    _Destination(
       icon: Icons.directions_boat_outlined,
       label: 'Boats',
+      section: 'Fishery',
       visibleFor: const {BusinessType.fishery},
       builder: () => const AssetsScreen(assetType: OperatingAssetType.boat),
     ),
     _Destination(
       icon: Icons.groups_outlined,
       label: 'Crew',
+      section: 'Fishery',
       visibleFor: const {BusinessType.fishery},
       builder: () => CrewScreen(
         title: 'Captains & Crew',
@@ -189,18 +185,21 @@ class _AppShellState extends ConsumerState<AppShell> with WidgetsBindingObserver
     _Destination(
       icon: Icons.sailing_outlined,
       label: 'Fishing Trips',
+      section: 'Fishery',
       visibleFor: const {BusinessType.fishery},
       builder: () => const TripsScreen(tripType: TripType.fishery),
     ),
     _Destination(
       icon: Icons.local_shipping_outlined,
       label: 'Vehicles',
+      section: 'Transport',
       visibleFor: const {BusinessType.transport},
       builder: () => const AssetsScreen(assetType: OperatingAssetType.vehicle),
     ),
     _Destination(
       icon: Icons.badge_outlined,
       label: 'Drivers',
+      section: 'Transport',
       visibleFor: const {BusinessType.transport},
       builder: () => CrewScreen(
         title: 'Drivers',
@@ -214,21 +213,76 @@ class _AppShellState extends ConsumerState<AppShell> with WidgetsBindingObserver
     _Destination(
       icon: Icons.description_outlined,
       label: 'Contracts',
+      section: 'Transport',
       visibleFor: const {BusinessType.transport},
       builder: () => const ContractsScreen(),
     ),
     _Destination(
       icon: Icons.alt_route_outlined,
       label: 'Haul Trips',
+      section: 'Transport',
       visibleFor: const {BusinessType.transport},
       builder: () => const TripsScreen(tripType: TripType.transport),
     ),
-    _Destination(icon: Icons.sync_outlined, label: 'Sync Status', builder: () => const SyncStatusScreen()),
-    _Destination(icon: Icons.precision_manufacturing_outlined, label: 'Fixed Assets', builder: () => const FixedAssetsScreen()),
-    _Destination(icon: Icons.fact_check_outlined, label: 'Approvals', builder: () => const ApprovalsScreen()),
-    _Destination(icon: Icons.dashboard_customize_outlined, label: 'All Businesses', builder: () => const CrossBusinessDashboardScreen()),
-    _Destination(icon: Icons.payments_outlined, label: 'Payroll', builder: () => const PayrollScreen()),
+
+    // --- Parties ---
+    _Destination(
+      icon: Icons.people_outline,
+      label: 'Customers',
+      section: 'Parties',
+      builder: () => const PartyListScreen(type: PartyType.customer),
+    ),
+    _Destination(
+      icon: Icons.local_shipping_outlined,
+      label: 'Suppliers',
+      section: 'Parties',
+      builder: () => const PartyListScreen(type: PartyType.supplier),
+    ),
+
+    // --- Accounting ---
+    _Destination(icon: Icons.account_balance_wallet_outlined, label: 'Cash Book', section: 'Accounting', builder: () => const CashBookScreen()),
+    _Destination(icon: Icons.balance_outlined, label: 'Trial Balance', section: 'Accounting', builder: () => const TrialBalanceScreen()),
+    _Destination(icon: Icons.trending_up_outlined, label: 'P&L', section: 'Accounting', builder: () => const ProfitAndLossScreen()),
+    _Destination(icon: Icons.history_outlined, label: 'Audit Trail', section: 'Accounting', builder: () => const AuditTrailScreen()),
+    _Destination(icon: Icons.account_balance_outlined, label: 'Bank Accounts', section: 'Accounting', builder: () => const BankAccountsScreen()),
+    _Destination(icon: Icons.precision_manufacturing_outlined, label: 'Fixed Assets', section: 'Accounting', builder: () => const FixedAssetsScreen()),
+    _Destination(icon: Icons.fact_check_outlined, label: 'Approvals', section: 'Accounting', builder: () => const ApprovalsScreen()),
+    _Destination(icon: Icons.payments_outlined, label: 'Payroll', section: 'Accounting', builder: () => const PayrollScreen()),
+
+    // --- Admin ---
+    _Destination(icon: Icons.sync_outlined, label: 'Sync Status', section: 'Admin', builder: () => const SyncStatusScreen()),
+    _Destination(icon: Icons.dashboard_customize_outlined, label: 'All Businesses', section: 'Admin', builder: () => const CrossBusinessDashboardScreen()),
   ];
+
+  Future<void> _showBusinessMenu(BuildContext menuContext) async {
+    final value = await showMenu<String>(
+      context: menuContext,
+      position: const RelativeRect.fromLTRB(16, 0, 16, 16),
+      items: const [
+        PopupMenuItem(value: 'switch', child: Text('Switch Business')),
+        PopupMenuItem(value: 'signout', child: Text('Sign out')),
+      ],
+    );
+    if (!mounted) return;
+    if (value == 'switch') {
+      await Navigator.of(context).push(MaterialPageRoute(builder: (_) => const BusinessSwitcherScreen()));
+      if (mounted) setState(() => _selectedIndex = 0);
+    } else if (value == 'signout') {
+      await FirebaseAuth.instance.signOut();
+    }
+  }
+
+  static const _typeLabels = {
+    BusinessType.sparePartsShop: 'Spare Parts Shop',
+    BusinessType.fishery: 'Fishery',
+    BusinessType.transport: 'Transport',
+  };
+
+  static const _typeIcons = {
+    BusinessType.sparePartsShop: Icons.settings_suggest_outlined,
+    BusinessType.fishery: Icons.sailing_outlined,
+    BusinessType.transport: Icons.local_shipping_outlined,
+  };
 
   @override
   Widget build(BuildContext context) {
@@ -244,45 +298,86 @@ class _AppShellState extends ConsumerState<AppShell> with WidgetsBindingObserver
         // different type — fall back to Dashboard rather than crash.
         final selectedIndex = _selectedIndex < destinations.length ? _selectedIndex : 0;
 
+        final groups = <AppSidebarGroup>[];
+        String? currentSection;
+        List<AppSidebarItem> currentItems = [];
+        void flush() {
+          if (currentItems.isNotEmpty) groups.add(AppSidebarGroup(title: currentSection, items: currentItems));
+        }
+
+        for (var i = 0; i < destinations.length; i++) {
+          final d = destinations[i];
+          if (d.section != currentSection) {
+            flush();
+            currentSection = d.section;
+            currentItems = [];
+          }
+          currentItems.add(AppSidebarItem(
+            icon: d.icon,
+            label: d.label,
+            selected: i == selectedIndex,
+            onTap: () => setState(() => _selectedIndex = i),
+          ));
+        }
+        flush();
+
         return Scaffold(
           body: Row(
             children: [
-              NavigationRail(
-                selectedIndex: selectedIndex,
-                onDestinationSelected: (i) => setState(() => _selectedIndex = i),
-                labelType: NavigationRailLabelType.all,
-                leading: Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                  child: Column(
+              AppSidebar(
+                header: Padding(
+                  padding: const EdgeInsets.fromLTRB(AppSpacing.lg, AppSpacing.lg, AppSpacing.lg, AppSpacing.md),
+                  child: Row(
                     children: [
-                      const Icon(Icons.business, size: 32),
-                      const SizedBox(height: 8),
-                      IconButton(
-                        icon: const Icon(Icons.swap_horiz, size: 18),
-                        tooltip: 'Switch Business',
-                        onPressed: () async {
-                          await Navigator.of(context).push(
-                            MaterialPageRoute(builder: (_) => const BusinessSwitcherScreen()),
-                          );
-                          // The new business's type may not have this
-                          // many destinations — reset to Dashboard rather
-                          // than risk a stale index.
-                          if (mounted) setState(() => _selectedIndex = 0);
-                        },
+                      Container(
+                        width: 36,
+                        height: 36,
+                        decoration: BoxDecoration(
+                          color: AppColors.primary,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: const Icon(Icons.business, color: Colors.white, size: 20),
                       ),
-                      IconButton(
-                        icon: const Icon(Icons.logout, size: 18),
-                        tooltip: 'Sign out',
-                        onPressed: () => FirebaseAuth.instance.signOut(),
+                      const SizedBox(width: AppSpacing.md),
+                      const Expanded(
+                        child: Text('Business ERP', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
                       ),
                     ],
                   ),
                 ),
-                destinations: destinations
-                    .map((d) => NavigationRailDestination(icon: Icon(d.icon), label: Text(d.label)))
-                    .toList(),
+                groups: groups,
+                footer: InkWell(
+                  onTap: () => _showBusinessMenu(context),
+                  child: Padding(
+                    padding: const EdgeInsets.all(AppSpacing.md),
+                    child: Row(
+                      children: [
+                        Icon(_typeIcons[business.type], size: 18, color: Colors.grey.shade600),
+                        const SizedBox(width: AppSpacing.md),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                business.name,
+                                style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              Text(
+                                _typeLabels[business.type] ?? '',
+                                style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ],
+                          ),
+                        ),
+                        Icon(Icons.unfold_more, size: 16, color: Colors.grey.shade400),
+                      ],
+                    ),
+                  ),
+                ),
               ),
-              const VerticalDivider(width: 1),
               Expanded(child: destinations[selectedIndex].builder()),
             ],
           ),
