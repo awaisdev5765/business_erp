@@ -5,6 +5,7 @@ import '../../core/activity/trip.dart';
 import '../../core/asset/operating_asset.dart';
 import '../../core/party/party.dart';
 import '../../core/system/providers.dart';
+import '../../shared/theme/app_theme.dart';
 import 'trip_detail_screen.dart';
 
 /// Shared between Fishery and Transport — same Trip lifecycle, just a
@@ -127,23 +128,56 @@ class _TripsScreenState extends ConsumerState<TripsScreen> {
       body: trips == null
           ? const Center(child: CircularProgressIndicator())
           : trips.isEmpty
-              ? const Center(child: Text('No trips yet — tap + to plan one.'))
-              : ListView.builder(
+              ? Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.alt_route_outlined, size: 40, color: Colors.grey.shade400),
+                      const SizedBox(height: AppSpacing.md),
+                      const Text('No trips yet — tap + to plan one.'),
+                    ],
+                  ),
+                )
+              : ListView.separated(
+                  padding: const EdgeInsets.all(AppSpacing.lg),
                   itemCount: trips.length,
+                  separatorBuilder: (_, _) => const SizedBox(height: AppSpacing.sm),
                   itemBuilder: (context, index) {
                     final trip = trips[index];
                     final asset = _assetsByUuid[trip.assetUuid];
-                    return ListTile(
-                      leading: Icon(_statusIcon(trip.status)),
-                      title: Text(asset?.name ?? trip.assetUuid),
-                      subtitle: Text('${trip.status.name}  •  ${_formatDate(trip.startDate)}'),
-                      trailing: const Icon(Icons.chevron_right),
-                      onTap: () async {
-                        await Navigator.of(context).push(
-                          MaterialPageRoute(builder: (_) => TripDetailScreen(trip: trip)),
-                        );
-                        await _load();
-                      },
+                    final statusColor = _statusColor(trip.status);
+                    return Card(
+                      child: ListTile(
+                        contentPadding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg, vertical: AppSpacing.xs),
+                        leading: Container(
+                          width: 40,
+                          height: 40,
+                          decoration: BoxDecoration(color: statusColor.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(8)),
+                          child: Icon(_statusIcon(trip.status), color: statusColor, size: 18),
+                        ),
+                        title: Text(asset?.name ?? trip.assetUuid),
+                        subtitle: Text(_formatDate(trip.startDate)),
+                        trailing: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Chip(
+                              label: Text(trip.status.name),
+                              backgroundColor: statusColor.withValues(alpha: 0.12),
+                              labelStyle: TextStyle(color: statusColor, fontWeight: FontWeight.w600, fontSize: 12),
+                              side: BorderSide.none,
+                              visualDensity: VisualDensity.compact,
+                            ),
+                            const SizedBox(width: AppSpacing.sm),
+                            const Icon(Icons.chevron_right, size: 18),
+                          ],
+                        ),
+                        onTap: () async {
+                          await Navigator.of(context).push(
+                            MaterialPageRoute(builder: (_) => TripDetailScreen(trip: trip)),
+                          );
+                          await _load();
+                        },
+                      ),
                     );
                   },
                 ),
@@ -159,6 +193,17 @@ IconData _statusIcon(TripStatus status) {
       return Icons.local_shipping;
     case TripStatus.completed:
       return Icons.check_circle_outline;
+  }
+}
+
+Color _statusColor(TripStatus status) {
+  switch (status) {
+    case TripStatus.planned:
+      return AppColors.warning;
+    case TripStatus.inProgress:
+      return AppColors.accent;
+    case TripStatus.completed:
+      return AppColors.success;
   }
 }
 
