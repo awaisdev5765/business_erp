@@ -382,3 +382,61 @@ is a one-line predicate (`visibleFor == null || visibleFor.contains
 (type)`) plus the index-clamp fallback, both verified by inspection
 rather than worth standing up Firebase mocks for. `flutter analyze` is
 clean and the existing 72 tests (none of which touch UI) are unaffected.
+
+## Phase 10 — Web Platform Fix + Super Admin / Staff RBAC (DONE)
+Two things prompted this phase: (1) registering on the deployed web
+build failed with "Unsupported operation: Platform._operatingSystem"
+— `AppDatabase.open()` called `dart:io`'s `Platform.isAndroid`/`isIOS`
+unconditionally, which throws on web before even reaching the
+FFI-vs-native branch; web has no native SQLite at all, so this needed
+a real backend, not a guard clause. (2) The actual ownership model —
+one Super Admin (SaaS owner) seeing every business across all three
+verticals, with staff logging in on their own admin-assigned
+credentials and seeing only what they're granted — had never been
+built; `ensureProfile()` made *whoever signed up first* Super Admin and
+auto-granted everyone `businessAdmin` on the locally-seeded business,
+and the Business Switcher listed every local business to every signed-
+in user with no access filtering at all.
+
+- [x] `database.dart`: branch on `kIsWeb` before touching `Platform`;
+      web uses `sqflite_common_ffi_web` (sqlite3 wasm + IndexedDB)
+      instead of `path_provider` + native FFI. `sqlite3.wasm`/
+      `sqflite_sw.js` added to `web/` via the package's setup tool
+      (needed a temporary `sqlite3` dependency override to run, since
+      its own tooling otherwise pulls a release requiring the
+      native-assets experiment, stable-channel-incompatible).
+- [x] `kSuperAdminEmail` (superadmin@berp.com) replaces "first to sign
+      up" — registration order is racy once anyone can reach the
+      sign-in screen. `businessAccess` starts empty for every account
+      and is only ever populated by a Super Admin via
+      `grantAccess`/`revokeAccess`, never auto-granted on sign-in.
+- [x] `firestore.rules`: `/users/{uid}` write split into `create` (a
+      user may create *their own* empty profile once, with
+      `isSuperAdmin` computed from their verified ID token email, not
+      client-supplied data) vs `update` (Super Admin only). Added
+      `/meta/bootstrap`, a public-read flag so the signed-out
+      LoginScreen can tell whether a Super Admin already exists.
+- [x] `accessibleBusinessesProvider` + AppShell/BusinessSwitcherScreen:
+      staff only see businesses in their own `businessAccess`; Super
+      Admin sees all (`CrossBusinessDashboardScreen` already did this
+      for the rollup view, Phase 6 — now the nav/switcher match it).
+      AppShell shows "no business assigned yet" instead of silently
+      rendering whatever business happened to auto-select.
+- [x] `StaffManagementScreen` (Super-Admin-only "Team" nav item):
+      create staff logins, grant/revoke per-business roles. Creating a
+      Firebase Auth user from client code normally signs the *caller*
+      out and into the new account — no Admin SDK/Cloud Functions on
+      the free Spark plan to do this server-side — worked around with
+      a throwaway secondary `FirebaseApp`, leaving the Super Admin's
+      own session untouched.
+- [x] LoginScreen: removed public self-registration; added a one-time
+      "Register as Super Admin" button, shown only while
+      `/meta/bootstrap` says no Super Admin exists yet, gone for every
+      future visitor once used.
+
+**Testing note:** flutter analyze clean, all 72 existing tests still
+pass (none of this touches ledger/accounting code). The RBAC/web-db
+paths aren't covered by automated tests (same reasoning as Phase 9 —
+Firebase Auth/Firestore-live UI, no mocking infrastructure set up for
+widget tests yet); verified by deploying the real rules and
+provisioning the real Super Admin account end-to-end.
