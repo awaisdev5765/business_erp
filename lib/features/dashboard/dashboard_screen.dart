@@ -1,8 +1,15 @@
+import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/system/providers.dart';
 import '../../shared/theme/app_theme.dart';
+
+/// Income account codes shared across all three verticals — see
+/// chart_of_accounts_seed.dart. Summed together for the revenue trend
+/// chart since the Dashboard is generic across business types (Sales
+/// Income, Trip/Catch Income, Other Income all count as "revenue" here).
+const _incomeAccountCodes = ['4010', '4020', '4030'];
 
 class DashboardScreen extends ConsumerStatefulWidget {
   const DashboardScreen({super.key});
@@ -16,6 +23,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   int? _receivables;
   int? _payables;
   String? _businessName;
+  List<int>? _dailyRevenueLast14Days; // index 0 = 13 days ago, index 13 = today
 
   @override
   void initState() {
@@ -32,12 +40,29 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     final receivables = await ledger.accountBalanceMinorUnits(businessId: businessId, accountCode: '1030');
     final payables = await ledger.accountBalanceMinorUnits(businessId: businessId, accountCode: '2010');
 
+    final today = DateTime.now();
+    final startOfToday = DateTime(today.year, today.month, today.day);
+    final dailyRevenue = List<int>.filled(14, 0);
+
+    for (final code in _incomeAccountCodes) {
+      final statement = await ledger.accountStatement(businessId: businessId, accountCode: code);
+      for (final row in statement) {
+        final date = DateTime.parse(row['date'] as String);
+        final day = DateTime(date.year, date.month, date.day);
+        final daysAgo = startOfToday.difference(day).inDays;
+        if (daysAgo < 0 || daysAgo > 13) continue;
+        final amount = (row['credit_minor_units'] as int) - (row['debit_minor_units'] as int);
+        dailyRevenue[13 - daysAgo] += amount;
+      }
+    }
+
     if (mounted) {
       setState(() {
         _cashBalance = cash;
         _receivables = receivables;
         _payables = -payables; // stored as a credit balance, show as positive owed
         _businessName = business.name;
+        _dailyRevenueLast14Days = dailyRevenue;
       });
     }
   }
@@ -94,6 +119,8 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                 );
               },
             ),
+            const SizedBox(height: AppSpacing.xl),
+            _RevenueTrendCard(dailyRevenue: _dailyRevenueLast14Days),
           ],
         ),
       ),
@@ -149,3 +176,92 @@ class _StatCard extends StatelessWidget {
     );
   }
 }
+
+/// Revenue (all income accounts combined) for each of the last 14 days
+/// — the one trend chart the "Data-Dense Dashboard" style calls for that
+/// this app's KPI-cards-only Dashboard never had.
+class _RevenueTrendCard extends StatelessWidget {
+  const _RevenueTrendCard({required this.dailyRevenue});
+
+  final List<int>? dailyRevenue;
+
+  @override
+  Widget build(BuildContext context) {
+    final data = dailyRevenue;
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(AppSpacing.lg),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Revenue — Last 14 Days', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
+            const SizedBox(height: AppSpacing.lg),
+            SizedBox(
+              height: 180,
+              child: data == null
+                  ? const Center(child: CircularProgressIndicator())
+                  : data.every((v) => v == 0)
+                      ? Center(child: Text('No revenue posted in the last 14 days', style: TextStyle(color: Colors.grey.shade600)))
+                      : _buildChart(context, data),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildChart(BuildContext context, List<int> data) {
+    final maxValue = data.reduce((a, b) => a > b ? a : b).toDouble();
+    final today = DateTime.now();
+
+    return BarChart(
+      BarChartData(
+        maxY: maxValue <= 0 ? 1 : maxValue * 1.2,
+        gridData: const FlGridData(show: false),
+        borderData: FlBorderData(show: false),
+        titlesData: FlTitlesData(
+          leftTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+          rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+          topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+          bottomTitles: AxisTitles(
+            sideTitles: SideTitles(
+              showTitles: true,
+              getTitlesWidget: (value, meta) {
+                final daysAgo = 13 - value.toInt();
+                final date = today.subtract(Duration(days: daysAgo));
+                // Label every other day to avoid crowding.
+                if (value.toInt() % 2 != 0) return const SizedBox.shrink();
+                return Padding(
+                  padding: const EdgeInsets.only(top: AppSpacing.xs),
+                  child: Text('${date.day}', style: TextStyle(fontSize: 10, color: Colors.grey.shade600)),
+                );
+              },
+            ),
+          ),
+        ),
+        barTouchData: BarTouchData(
+          touchTooltipData: BarTouchTooltipData(
+            getTooltipItem: (group, groupIndex, rod, rodIndex) =>
+                BarTooltipItem(_money(rod.toY.round()), const TextStyle(color: Colors.white, fontSize: 12)),
+          ),
+        ),
+        barGroups: [
+          for (var i = 0; i < data.length; i++)
+            BarChartGroupData(
+              x: i,
+              barRods: [
+                BarChartRodData(
+                  toY: data[i].toDouble(),
+                  color: AppColors.accent,
+                  width: 14,
+                  borderRadius: BorderRadius.circular(3),
+                ),
+              ],
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+String _money(int minorUnits) => (minorUnits / 100).toStringAsFixed(2);

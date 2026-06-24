@@ -14,11 +14,23 @@ class ProductListScreen extends ConsumerStatefulWidget {
 
 class _ProductListScreenState extends ConsumerState<ProductListScreen> {
   List<Product>? _products;
+  final _searchController = TextEditingController();
+  String _query = '';
 
   @override
   void initState() {
     super.initState();
     _load();
+    _searchController.addListener(
+      () =>
+          setState(() => _query = _searchController.text.trim().toLowerCase()),
+    );
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
   }
 
   Future<void> _load() async {
@@ -45,9 +57,15 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              TextField(controller: skuController, decoration: const InputDecoration(labelText: 'SKU')),
+              TextField(
+                controller: skuController,
+                decoration: const InputDecoration(labelText: 'SKU'),
+              ),
               const SizedBox(height: AppSpacing.md),
-              TextField(controller: nameController, decoration: const InputDecoration(labelText: 'Name')),
+              TextField(
+                controller: nameController,
+                decoration: const InputDecoration(labelText: 'Name'),
+              ),
               const SizedBox(height: AppSpacing.md),
               TextField(
                 controller: costController,
@@ -70,8 +88,14 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
           ),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Save')),
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Save'),
+          ),
         ],
       ),
     );
@@ -85,8 +109,10 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
       businessId: businessId,
       sku: skuController.text,
       name: nameController.text,
-      costPriceMinorUnits: ((double.tryParse(costController.text) ?? 0) * 100).round(),
-      salePriceMinorUnits: ((double.tryParse(priceController.text) ?? 0) * 100).round(),
+      costPriceMinorUnits: ((double.tryParse(costController.text) ?? 0) * 100)
+          .round(),
+      salePriceMinorUnits: ((double.tryParse(priceController.text) ?? 0) * 100)
+          .round(),
       openingStock: int.tryParse(stockController.text) ?? 0,
     );
     await _load();
@@ -95,6 +121,18 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
   @override
   Widget build(BuildContext context) {
     final products = _products;
+    final filtered = products == null
+        ? null
+        : (_query.isEmpty
+              ? products
+              : products
+                    .where(
+                      (p) =>
+                          p.name.toLowerCase().contains(_query) ||
+                          p.sku.toLowerCase().contains(_query),
+                    )
+                    .toList());
+
     return Scaffold(
       appBar: AppBar(title: const Text('Products')),
       floatingActionButton: FloatingActionButton(
@@ -104,51 +142,100 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
       ),
       body: products == null
           ? const Center(child: CircularProgressIndicator())
-          : products.isEmpty
-              ? Center(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.inventory_2_outlined, size: 40, color: Colors.grey.shade400),
-                      const SizedBox(height: AppSpacing.md),
-                      const Text('No products yet — tap + to add one.'),
-                    ],
-                  ),
-                )
-              : ListView.separated(
-                  padding: const EdgeInsets.all(AppSpacing.lg),
-                  itemCount: products.length,
-                  separatorBuilder: (_, _) => const SizedBox(height: AppSpacing.sm),
-                  itemBuilder: (context, index) {
-                    final p = products[index];
-                    final low = p.stockQuantity <= p.reorderLevel;
-                    return Card(
-                      child: ListTile(
-                        contentPadding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg, vertical: AppSpacing.xs),
-                        leading: Container(
-                          width: 40,
-                          height: 40,
-                          decoration: BoxDecoration(
-                            color: AppColors.accent.withValues(alpha: 0.12),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: const Icon(Icons.inventory_2_outlined, color: AppColors.accent, size: 18),
-                        ),
-                        title: Text(p.name),
-                        subtitle: Text('SKU: ${p.sku}  •  Cost: ${_money(p.costPriceMinorUnits)}  •  Price: ${_money(p.salePriceMinorUnits)}'),
-                        trailing: Chip(
-                          label: Text('Stock: ${p.stockQuantity}'),
-                          backgroundColor: low ? AppColors.destructive.withValues(alpha: 0.12) : null,
-                          labelStyle: TextStyle(
-                            color: low ? AppColors.destructive : null,
-                            fontWeight: low ? FontWeight.w700 : null,
-                          ),
-                          side: BorderSide.none,
-                        ),
+          : Column(
+              children: [
+                if (products.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(
+                      AppSpacing.lg,
+                      AppSpacing.lg,
+                      AppSpacing.lg,
+                      0,
+                    ),
+                    child: TextField(
+                      controller: _searchController,
+                      decoration: const InputDecoration(
+                        hintText: 'Search by name or SKU...',
+                        prefixIcon: Icon(Icons.search),
                       ),
-                    );
-                  },
+                    ),
+                  ),
+                Expanded(
+                  child: products.isEmpty
+                      ? Center(
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                Icons.inventory_2_outlined,
+                                size: 40,
+                                color: Colors.grey.shade400,
+                              ),
+                              const SizedBox(height: AppSpacing.md),
+                              const Text('No products yet — tap + to add one.'),
+                            ],
+                          ),
+                        )
+                      : filtered!.isEmpty
+                      ? Center(
+                          child: Text(
+                            'No matches for "$_query"',
+                            style: TextStyle(color: Colors.grey.shade600),
+                          ),
+                        )
+                      : ListView.separated(
+                          padding: const EdgeInsets.all(AppSpacing.lg),
+                          itemCount: filtered.length,
+                          separatorBuilder: (_, _) =>
+                              const SizedBox(height: AppSpacing.sm),
+                          itemBuilder: (context, index) {
+                            final p = filtered[index];
+                            final low = p.stockQuantity <= p.reorderLevel;
+                            return Card(
+                              child: ListTile(
+                                contentPadding: const EdgeInsets.symmetric(
+                                  horizontal: AppSpacing.lg,
+                                  vertical: AppSpacing.xs,
+                                ),
+                                leading: Container(
+                                  width: 40,
+                                  height: 40,
+                                  decoration: BoxDecoration(
+                                    color: AppColors.accent.withValues(
+                                      alpha: 0.12,
+                                    ),
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: const Icon(
+                                    Icons.inventory_2_outlined,
+                                    color: AppColors.accent,
+                                    size: 18,
+                                  ),
+                                ),
+                                title: Text(p.name),
+                                subtitle: Text(
+                                  'SKU: ${p.sku}  •  Cost: ${_money(p.costPriceMinorUnits)}  •  Price: ${_money(p.salePriceMinorUnits)}',
+                                ),
+                                trailing: Chip(
+                                  label: Text('Stock: ${p.stockQuantity}'),
+                                  backgroundColor: low
+                                      ? AppColors.destructive.withValues(
+                                          alpha: 0.12,
+                                        )
+                                      : null,
+                                  labelStyle: TextStyle(
+                                    color: low ? AppColors.destructive : null,
+                                    fontWeight: low ? FontWeight.w700 : null,
+                                  ),
+                                  side: BorderSide.none,
+                                ),
+                              ),
+                            );
+                          },
+                        ),
                 ),
+              ],
+            ),
     );
   }
 }

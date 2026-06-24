@@ -17,11 +17,23 @@ class PartyListScreen extends ConsumerStatefulWidget {
 
 class _PartyListScreenState extends ConsumerState<PartyListScreen> {
   List<(Party, int)>? _partiesWithBalance;
+  final _searchController = TextEditingController();
+  String _query = '';
 
   @override
   void initState() {
     super.initState();
     _load();
+    _searchController.addListener(
+      () =>
+          setState(() => _query = _searchController.text.trim().toLowerCase()),
+    );
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
   }
 
   Future<void> _load() async {
@@ -43,19 +55,33 @@ class _PartyListScreenState extends ConsumerState<PartyListScreen> {
     final saved = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text(widget.type == PartyType.customer ? 'New Customer' : 'New Supplier'),
+        title: Text(
+          widget.type == PartyType.customer ? 'New Customer' : 'New Supplier',
+        ),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            TextField(controller: nameController, decoration: const InputDecoration(labelText: 'Name')),
+            TextField(
+              controller: nameController,
+              decoration: const InputDecoration(labelText: 'Name'),
+            ),
             const SizedBox(height: AppSpacing.md),
-            TextField(controller: phoneController, decoration: const InputDecoration(labelText: 'Phone')),
+            TextField(
+              controller: phoneController,
+              decoration: const InputDecoration(labelText: 'Phone'),
+            ),
           ],
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Save')),
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Save'),
+          ),
         ],
       ),
     );
@@ -77,77 +103,154 @@ class _PartyListScreenState extends ConsumerState<PartyListScreen> {
   Widget build(BuildContext context) {
     final isCustomer = widget.type == PartyType.customer;
     final data = _partiesWithBalance;
+    final filtered = data == null
+        ? null
+        : (_query.isEmpty
+              ? data
+              : data
+                    .where((d) => d.$1.name.toLowerCase().contains(_query))
+                    .toList());
 
     return Scaffold(
       appBar: AppBar(title: Text(isCustomer ? 'Customers' : 'Suppliers')),
-      floatingActionButton: FloatingActionButton(onPressed: _showAddDialog, child: const Icon(Icons.add)),
+      floatingActionButton: FloatingActionButton(
+        onPressed: _showAddDialog,
+        child: const Icon(Icons.add),
+      ),
       body: data == null
           ? const Center(child: CircularProgressIndicator())
-          : data.isEmpty
-              ? Center(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        isCustomer ? Icons.people_outline : Icons.local_shipping_outlined,
-                        size: 40,
-                        color: Colors.grey.shade400,
+          : Column(
+              children: [
+                if (data.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(
+                      AppSpacing.lg,
+                      AppSpacing.lg,
+                      AppSpacing.lg,
+                      0,
+                    ),
+                    child: TextField(
+                      controller: _searchController,
+                      decoration: InputDecoration(
+                        hintText:
+                            'Search ${isCustomer ? 'customers' : 'suppliers'}...',
+                        prefixIcon: const Icon(Icons.search),
                       ),
-                      const SizedBox(height: AppSpacing.md),
-                      Text('No ${isCustomer ? 'customers' : 'suppliers'} yet — tap + to add one.'),
-                    ],
+                    ),
                   ),
-                )
-              : ListView.separated(
-                  padding: const EdgeInsets.all(AppSpacing.lg),
-                  itemCount: data.length,
-                  separatorBuilder: (_, _) => const SizedBox(height: AppSpacing.sm),
-                  itemBuilder: (context, index) {
-                    final (party, balance) = data[index];
-                    // Receivable (customer owes us) is positive Dr; payable
-                    // (we owe supplier) is negative Cr — see PartyRepository.
-                    final owesUs = isCustomer ? balance : -balance;
-                    final initials = party.name.trim().isEmpty
-                        ? '?'
-                        : party.name.trim().split(RegExp(r'\s+')).take(2).map((w) => w[0].toUpperCase()).join();
+                Expanded(
+                  child: data.isEmpty
+                      ? Center(
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                isCustomer
+                                    ? Icons.people_outline
+                                    : Icons.local_shipping_outlined,
+                                size: 40,
+                                color: Colors.grey.shade400,
+                              ),
+                              const SizedBox(height: AppSpacing.md),
+                              Text(
+                                'No ${isCustomer ? 'customers' : 'suppliers'} yet — tap + to add one.',
+                              ),
+                            ],
+                          ),
+                        )
+                      : filtered!.isEmpty
+                      ? Center(
+                          child: Text(
+                            'No matches for "$_query"',
+                            style: TextStyle(color: Colors.grey.shade600),
+                          ),
+                        )
+                      : ListView.separated(
+                          padding: const EdgeInsets.all(AppSpacing.lg),
+                          itemCount: filtered.length,
+                          separatorBuilder: (_, _) =>
+                              const SizedBox(height: AppSpacing.sm),
+                          itemBuilder: (context, index) {
+                            final (party, balance) = filtered[index];
+                            // Receivable (customer owes us) is positive Dr; payable
+                            // (we owe supplier) is negative Cr — see PartyRepository.
+                            final owesUs = isCustomer ? balance : -balance;
+                            final initials = party.name.trim().isEmpty
+                                ? '?'
+                                : party.name
+                                      .trim()
+                                      .split(RegExp(r'\s+'))
+                                      .take(2)
+                                      .map((w) => w[0].toUpperCase())
+                                      .join();
 
-                    return Card(
-                      child: ListTile(
-                        contentPadding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg, vertical: AppSpacing.xs),
-                        leading: CircleAvatar(
-                          backgroundColor: AppColors.accent.withValues(alpha: 0.12),
-                          foregroundColor: AppColors.accent,
-                          child: Text(initials, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
-                        ),
-                        title: Text(party.name),
-                        subtitle: party.phone != null ? Text(party.phone!) : null,
-                        trailing: owesUs == 0
-                            ? Text('Settled', style: TextStyle(color: Colors.grey.shade500))
-                            : Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Icon(
-                                    owesUs > 0 ? Icons.arrow_upward : Icons.arrow_downward,
-                                    size: 14,
-                                    color: owesUs > 0 ? AppColors.destructive : AppColors.success,
+                            return Card(
+                              child: ListTile(
+                                contentPadding: const EdgeInsets.symmetric(
+                                  horizontal: AppSpacing.lg,
+                                  vertical: AppSpacing.xs,
+                                ),
+                                leading: CircleAvatar(
+                                  backgroundColor: AppColors.accent.withValues(
+                                    alpha: 0.12,
                                   ),
-                                  const SizedBox(width: 4),
-                                  Text(
-                                    _money(owesUs.abs()),
-                                    style: TextStyle(
-                                      color: owesUs > 0 ? AppColors.destructive : AppColors.success,
+                                  foregroundColor: AppColors.accent,
+                                  child: Text(
+                                    initials,
+                                    style: const TextStyle(
                                       fontWeight: FontWeight.w700,
+                                      fontSize: 13,
                                     ),
                                   ),
-                                ],
+                                ),
+                                title: Text(party.name),
+                                subtitle: party.phone != null
+                                    ? Text(party.phone!)
+                                    : null,
+                                trailing: owesUs == 0
+                                    ? Text(
+                                        'Settled',
+                                        style: TextStyle(
+                                          color: Colors.grey.shade500,
+                                        ),
+                                      )
+                                    : Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Icon(
+                                            owesUs > 0
+                                                ? Icons.arrow_upward
+                                                : Icons.arrow_downward,
+                                            size: 14,
+                                            color: owesUs > 0
+                                                ? AppColors.destructive
+                                                : AppColors.success,
+                                          ),
+                                          const SizedBox(width: 4),
+                                          Text(
+                                            _money(owesUs.abs()),
+                                            style: TextStyle(
+                                              color: owesUs > 0
+                                                  ? AppColors.destructive
+                                                  : AppColors.success,
+                                              fontWeight: FontWeight.w700,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                onTap: () => Navigator.of(context).push(
+                                  MaterialPageRoute(
+                                    builder: (_) =>
+                                        PartyLedgerScreen(party: party),
+                                  ),
+                                ),
                               ),
-                        onTap: () => Navigator.of(context).push(
-                          MaterialPageRoute(builder: (_) => PartyLedgerScreen(party: party)),
+                            );
+                          },
                         ),
-                      ),
-                    );
-                  },
                 ),
+              ],
+            ),
     );
   }
 }

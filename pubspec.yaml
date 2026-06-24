@@ -57,6 +57,9 @@ dependencies:
   # Design system typography (Plus Jakarta Sans — see lib/shared/theme/)
   google_fonts: ^6.2.1
 
+  # Dashboard revenue trend chart
+  fl_chart: ^0.69.2
+
   # Firebase — auth + backup/sync layer only, never the live query target
   # for transactional screens (PHASES.md Section 14). Free Spark plan: no
   # Cloud Functions (PHASES.md Phase 5 note).
