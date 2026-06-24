@@ -4,10 +4,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/system/providers.dart';
 import '../../core/tenant/business.dart';
 
-/// Lists every Business in the local database, lets the user switch the
-/// active one (sets `selectedBusinessIdProvider`), and create a new one.
-/// Replaces the "boots into one auto-seeded business" placeholder carried
-/// since Phase 1 — see PHASES.md Phase 6.
+/// Lists every Business the signed-in user can access — every business
+/// for a Super Admin, only the ones granted to staff otherwise (see
+/// `accessibleBusinessesProvider`) — lets them switch the active one
+/// (sets `selectedBusinessIdProvider`), and (Super Admin only) create a
+/// new one. Replaces the "boots into one auto-seeded business"
+/// placeholder carried since Phase 1 — see PHASES.md Phase 6.
 class BusinessSwitcherScreen extends ConsumerStatefulWidget {
   const BusinessSwitcherScreen({super.key});
 
@@ -25,8 +27,7 @@ class _BusinessSwitcherScreenState extends ConsumerState<BusinessSwitcherScreen>
   }
 
   Future<void> _load() async {
-    final repo = await ref.read(businessRepositoryProvider.future);
-    final businesses = await repo.list();
+    final businesses = await ref.read(accessibleBusinessesProvider.future);
     if (mounted) setState(() => _businesses = businesses);
   }
 
@@ -86,11 +87,24 @@ class _BusinessSwitcherScreenState extends ConsumerState<BusinessSwitcherScreen>
   Widget build(BuildContext context) {
     final businesses = _businesses;
     final activeId = ref.watch(currentBusinessIdProvider).valueOrNull;
+    final isSuperAdmin = ref.watch(currentUserProfileProvider).valueOrNull?.isSuperAdmin ?? false;
 
     return Scaffold(
       appBar: AppBar(title: const Text('Switch Business')),
-      floatingActionButton: FloatingActionButton(onPressed: _showCreateDialog, child: const Icon(Icons.add)),
-      body: businesses == null
+      floatingActionButton: isSuperAdmin
+          ? FloatingActionButton(onPressed: _showCreateDialog, child: const Icon(Icons.add))
+          : null,
+      body: businesses != null && businesses.isEmpty
+          ? const Center(
+              child: Padding(
+                padding: EdgeInsets.all(24),
+                child: Text(
+                  'No business assigned yet. Contact your administrator.',
+                  textAlign: TextAlign.center,
+                ),
+              ),
+            )
+          : businesses == null
           ? const Center(child: CircularProgressIndicator())
           : ListView.builder(
               itemCount: businesses.length,

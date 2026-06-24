@@ -1,8 +1,10 @@
-import 'dart:io';
+import 'dart:io' show Platform;
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
+import 'package:sqflite_common_ffi_web/sqflite_ffi_web.dart';
 
 import '../../features/fishery/fish_category.dart';
 import '../../features/fishery/fish_sale.dart';
@@ -38,12 +40,26 @@ import 'number_sequence.dart';
 ///
 /// sqflite's platform channel only covers Android/iOS. On Windows/macOS/
 /// Linux (and in `flutter test`) we swap in sqflite_common_ffi's
-/// databaseFactory, which talks to SQLite directly via FFI.
+/// databaseFactory (native FFI). On web, `dart:io`'s `Platform` itself
+/// throws `UnsupportedError` the moment it's touched — `kIsWeb` must be
+/// checked *before* any `Platform.*` access, not just before choosing a
+/// factory — so web gets its own branch using `sqflite_common_ffi_web`
+/// (sql.js/wasm + IndexedDB persistence) with no `path_provider` call,
+/// since that plugin has no web implementation either.
 class AppDatabase {
   static Database? _instance;
 
   static Future<Database> open() async {
     if (_instance != null) return _instance!;
+
+    if (kIsWeb) {
+      databaseFactory = databaseFactoryFfiWeb;
+      _instance = await databaseFactory.openDatabase(
+        'business_erp.db',
+        options: OpenDatabaseOptions(version: 1, onCreate: (db, version) => createSchema(db)),
+      );
+      return _instance!;
+    }
 
     if (!Platform.isAndroid && !Platform.isIOS) {
       sqfliteFfiInit();

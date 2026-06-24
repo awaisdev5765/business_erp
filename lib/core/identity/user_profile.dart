@@ -1,9 +1,23 @@
+/// The one Super Admin (SaaS owner) account — sees every business
+/// (Spare Parts, Fishery, Transport) and is the only account that can
+/// create staff logins. Fixed rather than "whoever signs up first",
+/// since staff accounts are now admin-provisioned, not self-registered
+/// (see StaffManagementScreen) — letting registration order decide who
+/// is Super Admin stopped being safe once anyone but the owner could
+/// reach the sign-in screen.
+const kSuperAdminEmail = 'superadmin@berp.com';
+
+/// Roles a Super Admin can grant a staff member on a specific business.
+/// Matches the role names `firestore.rules`' `roleFor()` checks against
+/// (e.g. `readOnlyAuditor` never gets write access there).
+const kStaffRoles = ['businessAdmin', 'accountant', 'cashier', 'readOnlyAuditor'];
+
 /// Lives in Firestore at /users/{uid} — never in local SQLite, since this
 /// is exactly the document `firestore.rules` reads via `get()` to decide
 /// every other access check. `businessAccess` maps businessId -> role
-/// name (matching PHASES.md Section 7's role list). The very first user
-/// to sign in becomes Super Admin with access to the locally-seeded
-/// business — see UserProfileRepository.ensureProfile(). This is the
+/// name. Profiles are created on first sign-in (UserProfileRepository.
+/// ensureProfile()) but `businessAccess` itself is only ever populated by
+/// the Super Admin via `grantAccess`/`revokeAccess` — this is the
 /// free-Spark-plan substitute for custom auth claims (see firestore.rules
 /// header for why).
 class UserProfile {

@@ -27,6 +27,7 @@ import 'features/payroll/payroll_screen.dart';
 import 'features/spare_parts/inventory/product_list_screen.dart';
 import 'features/spare_parts/purchases/purchase_entry_screen.dart';
 import 'features/spare_parts/sales/sale_entry_screen.dart';
+import 'features/identity/staff_management_screen.dart';
 import 'features/sync/sync_status_screen.dart';
 import 'features/tenant/business_switcher_screen.dart';
 import 'features/tenant/cross_business_dashboard_screen.dart';
@@ -73,7 +74,8 @@ class _Destination {
   final String? section;
   final Set<BusinessType>? visibleFor;
 
-  bool appliesTo(BusinessType type) => visibleFor == null || visibleFor!.contains(type);
+  bool appliesTo(BusinessType type) =>
+      visibleFor == null || visibleFor!.contains(type);
 }
 
 class AppShell extends ConsumerStatefulWidget {
@@ -83,7 +85,8 @@ class AppShell extends ConsumerStatefulWidget {
   ConsumerState<AppShell> createState() => _AppShellState();
 }
 
-class _AppShellState extends ConsumerState<AppShell> with WidgetsBindingObserver {
+class _AppShellState extends ConsumerState<AppShell>
+    with WidgetsBindingObserver {
   int _selectedIndex = 0;
   Timer? _syncTimer;
   StreamSubscription<RemoteMessage>? _fcmSubscription;
@@ -96,7 +99,10 @@ class _AppShellState extends ConsumerState<AppShell> with WidgetsBindingObserver
     // Periodic background sync while the app is open — see
     // FirestoreSyncService.syncAll. 3 minutes balances "reasonably
     // fresh" against not hammering Firestore reads on the free plan.
-    _syncTimer = Timer.periodic(const Duration(minutes: 3), (_) => _backgroundSync());
+    _syncTimer = Timer.periodic(
+      const Duration(minutes: 3),
+      (_) => _backgroundSync(),
+    );
 
     // Foreground messages don't show a system notification automatically
     // (only background/terminated does) — show an in-app SnackBar
@@ -106,7 +112,9 @@ class _AppShellState extends ConsumerState<AppShell> with WidgetsBindingObserver
     _fcmSubscription = FirebaseMessaging.onMessage.listen((message) {
       final text = message.notification?.title ?? message.notification?.body;
       if (text != null && mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(text)));
       }
     });
   }
@@ -140,7 +148,12 @@ class _AppShellState extends ConsumerState<AppShell> with WidgetsBindingObserver
   }
 
   static final _allDestinations = <_Destination>[
-    _Destination(icon: Icons.dashboard_outlined, label: 'Dashboard', section: null, builder: () => const DashboardScreen()),
+    _Destination(
+      icon: Icons.dashboard_outlined,
+      label: 'Dashboard',
+      section: null,
+      builder: () => const DashboardScreen(),
+    ),
 
     // --- Operations (exactly one of these three groups shows at a time) ---
     _Destination(
@@ -179,7 +192,10 @@ class _AppShellState extends ConsumerState<AppShell> with WidgetsBindingObserver
       builder: () => CrewScreen(
         title: 'Captains & Crew',
         roles: const [PartyType.captain, PartyType.crew],
-        roleLabels: const {PartyType.captain: 'Captain', PartyType.crew: 'Crew'},
+        roleLabels: const {
+          PartyType.captain: 'Captain',
+          PartyType.crew: 'Crew',
+        },
       ),
     ),
     _Destination(
@@ -206,7 +222,9 @@ class _AppShellState extends ConsumerState<AppShell> with WidgetsBindingObserver
         roles: const [PartyType.driver],
         roleLabels: const {PartyType.driver: 'Driver'},
         onTapPerson: (context, person) => Navigator.of(context).push(
-          MaterialPageRoute(builder: (_) => DriverPerformanceScreen(driver: person)),
+          MaterialPageRoute(
+            builder: (_) => DriverPerformanceScreen(driver: person),
+          ),
         ),
       ),
     ),
@@ -240,18 +258,74 @@ class _AppShellState extends ConsumerState<AppShell> with WidgetsBindingObserver
     ),
 
     // --- Accounting ---
-    _Destination(icon: Icons.account_balance_wallet_outlined, label: 'Cash Book', section: 'Accounting', builder: () => const CashBookScreen()),
-    _Destination(icon: Icons.balance_outlined, label: 'Trial Balance', section: 'Accounting', builder: () => const TrialBalanceScreen()),
-    _Destination(icon: Icons.trending_up_outlined, label: 'P&L', section: 'Accounting', builder: () => const ProfitAndLossScreen()),
-    _Destination(icon: Icons.history_outlined, label: 'Audit Trail', section: 'Accounting', builder: () => const AuditTrailScreen()),
-    _Destination(icon: Icons.account_balance_outlined, label: 'Bank Accounts', section: 'Accounting', builder: () => const BankAccountsScreen()),
-    _Destination(icon: Icons.precision_manufacturing_outlined, label: 'Fixed Assets', section: 'Accounting', builder: () => const FixedAssetsScreen()),
-    _Destination(icon: Icons.fact_check_outlined, label: 'Approvals', section: 'Accounting', builder: () => const ApprovalsScreen()),
-    _Destination(icon: Icons.payments_outlined, label: 'Payroll', section: 'Accounting', builder: () => const PayrollScreen()),
+    _Destination(
+      icon: Icons.account_balance_wallet_outlined,
+      label: 'Cash Book',
+      section: 'Accounting',
+      builder: () => const CashBookScreen(),
+    ),
+    _Destination(
+      icon: Icons.balance_outlined,
+      label: 'Trial Balance',
+      section: 'Accounting',
+      builder: () => const TrialBalanceScreen(),
+    ),
+    _Destination(
+      icon: Icons.trending_up_outlined,
+      label: 'P&L',
+      section: 'Accounting',
+      builder: () => const ProfitAndLossScreen(),
+    ),
+    _Destination(
+      icon: Icons.history_outlined,
+      label: 'Audit Trail',
+      section: 'Accounting',
+      builder: () => const AuditTrailScreen(),
+    ),
+    _Destination(
+      icon: Icons.account_balance_outlined,
+      label: 'Bank Accounts',
+      section: 'Accounting',
+      builder: () => const BankAccountsScreen(),
+    ),
+    _Destination(
+      icon: Icons.precision_manufacturing_outlined,
+      label: 'Fixed Assets',
+      section: 'Accounting',
+      builder: () => const FixedAssetsScreen(),
+    ),
+    _Destination(
+      icon: Icons.fact_check_outlined,
+      label: 'Approvals',
+      section: 'Accounting',
+      builder: () => const ApprovalsScreen(),
+    ),
+    _Destination(
+      icon: Icons.payments_outlined,
+      label: 'Payroll',
+      section: 'Accounting',
+      builder: () => const PayrollScreen(),
+    ),
 
     // --- Admin ---
-    _Destination(icon: Icons.sync_outlined, label: 'Sync Status', section: 'Admin', builder: () => const SyncStatusScreen()),
-    _Destination(icon: Icons.dashboard_customize_outlined, label: 'All Businesses', section: 'Admin', builder: () => const CrossBusinessDashboardScreen()),
+    _Destination(
+      icon: Icons.sync_outlined,
+      label: 'Sync Status',
+      section: 'Admin',
+      builder: () => const SyncStatusScreen(),
+    ),
+    _Destination(
+      icon: Icons.dashboard_customize_outlined,
+      label: 'All Businesses',
+      section: 'Admin',
+      builder: () => const CrossBusinessDashboardScreen(),
+    ),
+    _Destination(
+      icon: Icons.groups_2_outlined,
+      label: 'Team',
+      section: 'Admin',
+      builder: () => const StaffManagementScreen(),
+    ),
   ];
 
   Future<void> _showBusinessMenu(BuildContext menuContext) async {
@@ -265,7 +339,9 @@ class _AppShellState extends ConsumerState<AppShell> with WidgetsBindingObserver
     );
     if (!mounted) return;
     if (value == 'switch') {
-      await Navigator.of(context).push(MaterialPageRoute(builder: (_) => const BusinessSwitcherScreen()));
+      await Navigator.of(
+        context,
+      ).push(MaterialPageRoute(builder: (_) => const BusinessSwitcherScreen()));
       if (mounted) setState(() => _selectedIndex = 0);
     } else if (value == 'signout') {
       await FirebaseAuth.instance.signOut();
@@ -287,102 +363,194 @@ class _AppShellState extends ConsumerState<AppShell> with WidgetsBindingObserver
   @override
   Widget build(BuildContext context) {
     final business = ref.watch(currentBusinessProvider);
+    final profile = ref.watch(currentUserProfileProvider);
+    final accessible = ref.watch(accessibleBusinessesProvider);
 
-    return business.when(
-      loading: () => const Scaffold(body: Center(child: CircularProgressIndicator())),
-      error: (e, st) => Scaffold(body: Center(child: Text('Failed to start: $e'))),
-      data: (business) {
-        final destinations = _allDestinations.where((d) => d.appliesTo(business.type)).toList();
-        // The previously-selected index can point past the end (or at a
-        // now-hidden screen) right after switching to a business of a
-        // different type — fall back to Dashboard rather than crash.
-        final selectedIndex = _selectedIndex < destinations.length ? _selectedIndex : 0;
+    if (profile.isLoading || accessible.isLoading || business.isLoading) {
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
+    if (business.hasError) {
+      return Scaffold(
+        body: Center(child: Text('Failed to start: ${business.error}')),
+      );
+    }
 
-        final groups = <AppSidebarGroup>[];
-        String? currentSection;
-        List<AppSidebarItem> currentItems = [];
-        void flush() {
-          if (currentItems.isNotEmpty) groups.add(AppSidebarGroup(title: currentSection, items: currentItems));
-        }
+    final activeBusiness = business.value!;
+    final userProfile = profile.value;
+    final accessibleBusinesses = accessible.value ?? const [];
+    final isSuperAdmin = userProfile?.isSuperAdmin ?? false;
 
-        for (var i = 0; i < destinations.length; i++) {
-          final d = destinations[i];
-          if (d.section != currentSection) {
-            flush();
-            currentSection = d.section;
-            currentItems = [];
-          }
-          currentItems.add(AppSidebarItem(
-            icon: d.icon,
-            label: d.label,
-            selected: i == selectedIndex,
-            onTap: () => setState(() => _selectedIndex = i),
-          ));
-        }
-        flush();
-
+    if (!isSuperAdmin &&
+        !accessibleBusinesses.any((b) => b.uuid == activeBusiness.uuid)) {
+      if (accessibleBusinesses.isEmpty) {
         return Scaffold(
-          body: Row(
-            children: [
-              AppSidebar(
-                header: Padding(
-                  padding: const EdgeInsets.fromLTRB(AppSpacing.lg, AppSpacing.lg, AppSpacing.lg, AppSpacing.md),
-                  child: Row(
-                    children: [
-                      Container(
-                        width: 36,
-                        height: 36,
-                        decoration: BoxDecoration(
-                          color: AppColors.primary,
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: const Icon(Icons.business, color: Colors.white, size: 20),
-                      ),
-                      const SizedBox(width: AppSpacing.md),
-                      const Expanded(
-                        child: Text('Business ERP', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
-                      ),
-                    ],
+          body: Center(
+            child: Padding(
+              padding: const EdgeInsets.all(AppSpacing.xl),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    Icons.lock_outline,
+                    size: 40,
+                    color: Colors.grey.shade400,
                   ),
-                ),
-                groups: groups,
-                footer: InkWell(
-                  onTap: () => _showBusinessMenu(context),
-                  child: Padding(
-                    padding: const EdgeInsets.all(AppSpacing.md),
-                    child: Row(
-                      children: [
-                        Icon(_typeIcons[business.type], size: 18, color: Colors.grey.shade600),
-                        const SizedBox(width: AppSpacing.md),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text(
-                                business.name,
-                                style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                              Text(
-                                _typeLabels[business.type] ?? '',
-                                style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ],
-                          ),
-                        ),
-                        Icon(Icons.unfold_more, size: 16, color: Colors.grey.shade400),
-                      ],
-                    ),
+                  const SizedBox(height: AppSpacing.lg),
+                  const Text(
+                    'No business assigned yet.\nContact your administrator.',
+                    textAlign: TextAlign.center,
                   ),
-                ),
+                  const SizedBox(height: AppSpacing.lg),
+                  TextButton(
+                    onPressed: () => FirebaseAuth.instance.signOut(),
+                    child: const Text('Sign out'),
+                  ),
+                ],
               ),
-              Expanded(child: destinations[selectedIndex].builder()),
-            ],
+            ),
           ),
         );
-      },
+      }
+      // Has access elsewhere, just not to whatever auto-selected here —
+      // switch to the first business they're actually granted, on the
+      // next frame (mutating provider state mid-build is unsafe).
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        ref.read(selectedBusinessIdProvider.notifier).state =
+            accessibleBusinesses.first.uuid;
+      });
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
+
+    return _buildShell(context, activeBusiness);
+  }
+
+  Widget _buildShell(BuildContext context, Business business) {
+    final destinations = _allDestinations
+        .where((d) => d.appliesTo(business.type))
+        .toList();
+    // The previously-selected index can point past the end (or at a
+    // now-hidden screen) right after switching to a business of a
+    // different type — fall back to Dashboard rather than crash.
+    final selectedIndex = _selectedIndex < destinations.length
+        ? _selectedIndex
+        : 0;
+
+    final groups = <AppSidebarGroup>[];
+    String? currentSection;
+    List<AppSidebarItem> currentItems = [];
+    void flush() {
+      if (currentItems.isNotEmpty) {
+        groups.add(AppSidebarGroup(title: currentSection, items: currentItems));
+      }
+    }
+
+    for (var i = 0; i < destinations.length; i++) {
+      final d = destinations[i];
+      if (d.section != currentSection) {
+        flush();
+        currentSection = d.section;
+        currentItems = [];
+      }
+      currentItems.add(
+        AppSidebarItem(
+          icon: d.icon,
+          label: d.label,
+          selected: i == selectedIndex,
+          onTap: () => setState(() => _selectedIndex = i),
+        ),
+      );
+    }
+    flush();
+
+    return Scaffold(
+      body: Row(
+        children: [
+          AppSidebar(
+            header: Padding(
+              padding: const EdgeInsets.fromLTRB(
+                AppSpacing.lg,
+                AppSpacing.lg,
+                AppSpacing.lg,
+                AppSpacing.md,
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    width: 36,
+                    height: 36,
+                    decoration: BoxDecoration(
+                      color: AppColors.primary,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: const Icon(
+                      Icons.business,
+                      color: Colors.white,
+                      size: 20,
+                    ),
+                  ),
+                  const SizedBox(width: AppSpacing.md),
+                  const Expanded(
+                    child: Text(
+                      'Business ERP',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 15,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            groups: groups,
+            footer: InkWell(
+              onTap: () => _showBusinessMenu(context),
+              child: Padding(
+                padding: const EdgeInsets.all(AppSpacing.md),
+                child: Row(
+                  children: [
+                    Icon(
+                      _typeIcons[business.type],
+                      size: 18,
+                      color: Colors.grey.shade600,
+                    ),
+                    const SizedBox(width: AppSpacing.md),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            business.name,
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w600,
+                              fontSize: 13,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          Text(
+                            _typeLabels[business.type] ?? '',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: Colors.grey.shade600,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
+                      ),
+                    ),
+                    Icon(
+                      Icons.unfold_more,
+                      size: 16,
+                      color: Colors.grey.shade400,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          Expanded(child: destinations[selectedIndex].builder()),
+        ],
+      ),
     );
   }
 }

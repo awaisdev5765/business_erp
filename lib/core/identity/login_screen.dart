@@ -1,11 +1,18 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
-/// Email/password sign-in, with a toggle to register. There's no
-/// password-reset flow or invite-based onboarding yet — this app is
-/// architected for one owner (see UserProfileRepository.ensureProfile()),
-/// so "register" here means "create the owner account," not "add a team
-/// member." Multi-user invitation is later Identity work.
+import 'user_profile.dart';
+
+/// Email/password sign-in, plus a one-time "Register as Super Admin"
+/// bootstrap button. Every account except the fixed Super Admin
+/// (kSuperAdminEmail) is created by the Super Admin via
+/// StaffManagementScreen once signed in — so this button only ever
+/// creates *that one* fixed account, and disappears for good (for every
+/// future visitor, not just this session) the moment it's used: it
+/// checks the public `/meta/bootstrap` Firestore flag (the only
+/// document signed-out users can read — see firestore.rules) and hides
+/// itself if a Super Admin already exists.
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
 
@@ -16,9 +23,39 @@ class LoginScreen extends StatefulWidget {
 class _LoginScreenState extends State<LoginScreen> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
-  bool _isRegistering = false;
   bool _submitting = false;
   String? _error;
+
+  bool? _superAdminExists; // null while still checking
+  bool _registeringSuperAdmin = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _checkSuperAdminExists();
+  }
+
+  Future<void> _checkSuperAdminExists() async {
+    try {
+      final doc = await FirebaseFirestore.instance.collection('meta').doc('bootstrap').get();
+      final exists = doc.data()?['superAdminCreated'] == true;
+      if (mounted) {
+        setState(() {
+          _superAdminExists = exists;
+          if (!exists) _emailController.text = kSuperAdminEmail;
+        });
+      }
+    } catch (_) {
+      // Offline on first ever launch, or rules not deployed yet — fail
+      // open to "show the button" rather than lock out bootstrapping.
+      if (mounted) {
+        setState(() {
+          _superAdminExists = false;
+          _emailController.text = kSuperAdminEmail;
+        });
+      }
+    }
+  }
 
   Future<void> _submit() async {
     setState(() {
@@ -26,17 +63,10 @@ class _LoginScreenState extends State<LoginScreen> {
       _error = null;
     });
     try {
-      if (_isRegistering) {
-        await FirebaseAuth.instance.createUserWithEmailAndPassword(
-          email: _emailController.text.trim(),
-          password: _passwordController.text,
-        );
-      } else {
-        await FirebaseAuth.instance.signInWithEmailAndPassword(
-          email: _emailController.text.trim(),
-          password: _passwordController.text,
-        );
-      }
+      await FirebaseAuth.instance.signInWithEmailAndPassword(
+        email: _emailController.text.trim(),
+        password: _passwordController.text,
+      );
     } on FirebaseAuthException catch (e) {
       setState(() => _error = e.message ?? e.code);
     } finally {
@@ -44,8 +74,40 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
+  Future<void> _registerSuperAdmin() async {
+    setState(() {
+      _registeringSuperAdmin = true;
+      _error = null;
+    });
+    try {
+      final credential = await FirebaseAuth.instance.createUserWithEmailAndPassword(
+        email: kSuperAdminEmail,
+        password: _passwordController.text,
+      );
+      // Matches what UserProfileRepository.ensureProfile would write on
+      // a normal first sign-in — written here too so the flag is set
+      // before AuthGate's own ensureProfile call races it (harmless
+      // either way, ensureProfile is a no-op once a profile exists).
+      await FirebaseFirestore.instance.collection('users').doc(credential.user!.uid).set({
+        'uid': credential.user!.uid,
+        'email': kSuperAdminEmail,
+        'isSuperAdmin': true,
+        'businessAccess': <String, String>{},
+      });
+      await FirebaseFirestore.instance.collection('meta').doc('bootstrap').set({'superAdminCreated': true});
+      // AuthGate's authStateChanges listener takes over from here — no
+      // need to navigate manually.
+    } on FirebaseAuthException catch (e) {
+      setState(() => _error = e.message ?? e.code);
+    } finally {
+      if (mounted) setState(() => _registeringSuperAdmin = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    final showBootstrapButton = _superAdminExists == false;
+
     return Scaffold(
       body: Center(
         child: ConstrainedBox(
@@ -63,9 +125,18 @@ class _LoginScreenState extends State<LoginScreen> {
                   textAlign: TextAlign.center,
                   style: Theme.of(context).textTheme.headlineSmall,
                 ),
+                const SizedBox(height: 4),
+                Text(
+                  showBootstrapButton
+                      ? 'No Super Admin yet — set a password above and register one ($kSuperAdminEmail), or sign in if you already have an account.'
+                      : 'Sign in with the email and password your administrator gave you.',
+                  textAlign: TextAlign.center,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.grey.shade600),
+                ),
                 const SizedBox(height: 24),
                 TextField(
                   controller: _emailController,
+                  enabled: !showBootstrapButton,
                   decoration: const InputDecoration(labelText: 'Email', border: OutlineInputBorder()),
                   keyboardType: TextInputType.emailAddress,
                 ),
@@ -85,12 +156,17 @@ class _LoginScreenState extends State<LoginScreen> {
                   onPressed: _submitting ? null : _submit,
                   child: _submitting
                       ? const SizedBox(height: 16, width: 16, child: CircularProgressIndicator(strokeWidth: 2))
-                      : Text(_isRegistering ? 'Create Account' : 'Sign In'),
+                      : const Text('Sign In'),
                 ),
-                TextButton(
-                  onPressed: _submitting ? null : () => setState(() => _isRegistering = !_isRegistering),
-                  child: Text(_isRegistering ? 'Already have an account? Sign in' : "Don't have an account? Register"),
-                ),
+                if (showBootstrapButton) ...[
+                  const SizedBox(height: 8),
+                  OutlinedButton(
+                    onPressed: _registeringSuperAdmin ? null : _registerSuperAdmin,
+                    child: _registeringSuperAdmin
+                        ? const SizedBox(height: 16, width: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                        : const Text('Register as Super Admin'),
+                  ),
+                ],
               ],
             ),
           ),

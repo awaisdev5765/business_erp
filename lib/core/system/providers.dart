@@ -135,6 +135,20 @@ final currentUserProfileProvider = FutureProvider<UserProfile?>((ref) async {
   return repo.find(user.uid);
 });
 
+/// Every business the signed-in user may actually use: every business
+/// for a Super Admin, or only the ones in their `businessAccess` map for
+/// staff. Drives BusinessSwitcherScreen and AppShell's access gate — see
+/// PHASES.md's post-launch Identity work ("staff log in with their own
+/// assigned email, see only their business").
+final accessibleBusinessesProvider = FutureProvider<List<Business>>((ref) async {
+  final profile = await ref.watch(currentUserProfileProvider.future);
+  final businessRepo = await ref.watch(businessRepositoryProvider.future);
+  final all = await businessRepo.list();
+  if (profile == null) return [];
+  if (profile.isSuperAdmin) return all;
+  return all.where((b) => profile.businessAccess.containsKey(b.uuid)).toList();
+});
+
 final firestoreSyncServiceProvider = FutureProvider<FirestoreSyncService>((ref) async {
   final db = await ref.watch(databaseProvider.future);
   final firestore = ref.watch(firestoreProvider);

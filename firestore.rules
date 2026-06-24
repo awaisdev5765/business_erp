@@ -12,8 +12,13 @@ rules_version = '2';
 //    normally needs the Admin SDK, i.e. a Function or a backend). Role
 //    and business access instead live in a plain Firestore document at
 //    /users/{uid}, read inside these rules via get(). The Super Admin
-//    flag on that document is set by hand once in the Firebase console —
-//    a one-time manual step, not a recurring Function call.
+//    flag on that document is decided here, in rules, by comparing the
+//    signed-in user's *verified* ID token email against a fixed
+//    constant (kSuperAdminEmail in lib/core/identity/user_profile.dart)
+//    — not client-supplied data, so it can't be spoofed by a self-
+//    written profile. Every other account's businessAccess starts empty
+//    and is only ever populated by a Super Admin (StaffManagementScreen),
+//    never self-service.
 // 2. No server-side "do the debits equal the credits" validation for
 //    JournalEntry writes — summing an array in rules isn't expressible
 //    without Functions. That check stays purely client-side
@@ -55,11 +60,27 @@ service cloud.firestore {
 
     // A user's own profile: role assignments, isSuperAdmin flag. Only
     // the user themself can read it (rules need it for every other
-    // check); only a Super Admin can write it — onboarding a new user's
-    // business access is an administrative action, not self-service.
+    // check). A user may *create* their own profile once, on first
+    // sign-in (UserProfileRepository.ensureProfile) — but only with
+    // businessAccess empty and isSuperAdmin equal to whether their own
+    // verified token email matches the fixed Super Admin address; they
+    // cannot self-grant either. Granting/revoking business access after
+    // that first write is a Super Admin action only.
     match /users/{userId} {
       allow read: if isSignedIn() && request.auth.uid == userId;
-      allow write: if isSuperAdmin();
+      allow create: if isSignedIn() && request.auth.uid == userId &&
+        request.resource.data.businessAccess.size() == 0 &&
+        request.resource.data.isSuperAdmin == (request.auth.token.email.lower() == 'superadmin@berp.com');
+      allow update: if isSuperAdmin();
+    }
+
+    // A single public flag LoginScreen reads (signed out, so it can't
+    // read /users/* — that requires auth) to decide whether to still
+    // show the one-time "Register as Super Admin" bootstrap button.
+    // Only the Super Admin account itself can ever set it.
+    match /meta/bootstrap {
+      allow read: if true;
+      allow write: if isSignedIn() && request.auth.token.email.lower() == 'superadmin@berp.com';
     }
 
     match /businesses/{businessId} {
