@@ -18,6 +18,7 @@ import 'features/accounting/approvals_screen.dart';
 import 'features/accounting/audit_trail_screen.dart';
 import 'features/accounting/bank_accounts_screen.dart';
 import 'features/accounting/cash_book_screen.dart';
+import 'features/accounting/expenses_screen.dart';
 import 'features/accounting/fixed_assets_screen.dart';
 import 'features/accounting/profit_and_loss_screen.dart';
 import 'features/accounting/trial_balance_screen.dart';
@@ -336,6 +337,12 @@ class _AppShellState extends ConsumerState<AppShell>
       label: 'Payroll',
       section: 'Accounting',
       builder: () => const PayrollScreen(),
+    ),
+    _Destination(
+      icon: Icons.receipt_long_outlined,
+      label: 'Expenses',
+      section: 'Accounting',
+      builder: () => const ExpensesScreen(),
     ),
 
     // --- Admin ---

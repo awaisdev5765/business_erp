@@ -10,6 +10,7 @@ import '../accounting/balance_rollup_repository.dart';
 import '../accounting/bank_account_repository.dart';
 import '../accounting/chart_of_accounts_seed.dart';
 import '../accounting/depreciation_service.dart';
+import '../accounting/expense_repository.dart';
 import '../accounting/fiscal_period_repository.dart';
 import '../accounting/fixed_asset_repository.dart';
 import '../accounting/ledger_repository.dart';
@@ -232,6 +233,12 @@ final salaryRepositoryProvider = FutureProvider<SalaryRepository>((ref) async {
 final auditLogRepositoryProvider = FutureProvider<AuditLogRepository>((ref) async {
   final db = await ref.watch(databaseProvider.future);
   return AuditLogRepository(db);
+});
+
+final expenseRepositoryProvider = FutureProvider<ExpenseRepository>((ref) async {
+  final db = await ref.watch(databaseProvider.future);
+  final ledger = await ref.watch(ledgerRepositoryProvider.future);
+  return ExpenseRepository(db, ledger);
 });
 
 final syncQueueRepositoryProvider = FutureProvider<SyncQueueRepository>((ref) async {
