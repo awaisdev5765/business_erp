@@ -53,7 +53,7 @@ class _StaffManagementScreenState extends ConsumerState<StaffManagementScreen> {
     }
   }
 
-  Future<void> _createStaffUser(String email, String password) async {
+  Future<void> _createStaffUser(String email, String password, String businessId, String role) async {
     final secondaryApp = await Firebase.initializeApp(
       name: 'staff-provisioning-${DateTime.now().microsecondsSinceEpoch}',
       options: DefaultFirebaseOptions.currentPlatform,
@@ -81,14 +81,11 @@ class _StaffManagementScreenState extends ConsumerState<StaffManagementScreen> {
       });
       await secondaryAuth.signOut();
 
-      await profileRepo.grantAccess(uid: uid, businessId: _pendingBusinessId!, role: _pendingRole!);
+      await profileRepo.grantAccess(uid: uid, businessId: businessId, role: role);
     } finally {
       await secondaryApp.delete();
     }
   }
-
-  String? _pendingBusinessId;
-  String? _pendingRole;
 
   Future<void> _showAddStaffDialog() async {
     final emailController = TextEditingController();
@@ -157,9 +154,12 @@ class _StaffManagementScreenState extends ConsumerState<StaffManagementScreen> {
                   : () async {
                       setDialogState(() => submitting = true);
                       try {
-                        _pendingBusinessId = businessId;
-                        _pendingRole = role;
-                        await _createStaffUser(emailController.text.trim(), passwordController.text);
+                        await _createStaffUser(
+                          emailController.text.trim(),
+                          passwordController.text,
+                          businessId,
+                          role,
+                        );
                         if (context.mounted) Navigator.pop(context, true);
                       } on FirebaseAuthException catch (e) {
                         setDialogState(() {
