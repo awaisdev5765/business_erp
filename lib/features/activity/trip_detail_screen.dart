@@ -5,6 +5,7 @@ import '../../core/activity/trip.dart';
 import '../../core/activity/trip_expense.dart';
 import '../../core/party/party.dart';
 import '../../core/system/providers.dart';
+import '../../shared/theme/app_theme.dart';
 import '../fishery/fish_category.dart';
 import '../fishery/fish_sale.dart';
 import '../transport/contract.dart';
@@ -457,51 +458,67 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
         title: Text('Trip — ${_trip.status.name}'),
         actions: [
           if (_trip.status == TripStatus.planned)
-            TextButton(onPressed: _startTrip, child: const Text('Start Trip', style: TextStyle(color: Colors.white))),
+            Padding(
+              padding: const EdgeInsets.only(right: AppSpacing.md),
+              child: FilledButton(onPressed: _startTrip, child: const Text('Start Trip')),
+            ),
           if (_trip.status == TripStatus.inProgress)
-            TextButton(onPressed: _completeTrip, child: const Text('Complete Trip', style: TextStyle(color: Colors.white))),
+            Padding(
+              padding: const EdgeInsets.only(right: AppSpacing.md),
+              child: FilledButton(onPressed: _completeTrip, child: const Text('Complete Trip')),
+            ),
         ],
       ),
       body: expenses == null || !dataReady
           ? const Center(child: CircularProgressIndicator())
           : ListView(
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.all(AppSpacing.xl),
               children: [
-                if (revenue != null && expenseTotal != null)
-                  Card(
-                    color: revenue - expenseTotal >= 0 ? Colors.green.shade50 : Colors.red.shade50,
-                    child: Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text('Revenue: ${_money(revenue)}'),
-                          Text('Expenses: ${_money(expenseTotal)}'),
-                          Text(
-                            'Profit: ${_money(revenue - expenseTotal)}',
-                            style: const TextStyle(fontWeight: FontWeight.bold),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                const SizedBox(height: 16),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text('Expenses', style: Theme.of(context).textTheme.titleMedium),
-                    TextButton(onPressed: _showAddExpenseDialog, child: const Text('+ Add Expense')),
-                  ],
-                ),
-                ...expenses.map((e) => ListTile(
-                      title: Text(e.category.name),
-                      subtitle: e.description != null ? Text(e.description!) : null,
-                      trailing: Text(_money(e.amountMinorUnits)),
-                    )),
-                const Divider(),
+                if (revenue != null && expenseTotal != null) _buildSummaryCard(context, revenue, expenseTotal),
+                const SizedBox(height: AppSpacing.xl),
+                _SectionHeader(title: 'Expenses', actionLabel: 'Add Expense', onAction: _showAddExpenseDialog),
+                const SizedBox(height: AppSpacing.sm),
+                if (expenses.isEmpty)
+                  _emptyHint('No expenses logged yet')
+                else
+                  ...expenses.map((e) => _Row(
+                        icon: Icons.receipt_long_outlined,
+                        title: e.category.name,
+                        subtitle: e.description,
+                        trailing: _money(e.amountMinorUnits),
+                      )),
+                const SizedBox(height: AppSpacing.lg),
                 if (_isFishery) ..._buildFisherySections(context) else ..._buildTransportSections(context),
               ],
             ),
+    );
+  }
+
+  Widget _buildSummaryCard(BuildContext context, int revenue, int expenseTotal) {
+    final profit = revenue - expenseTotal;
+    final color = profit >= 0 ? AppColors.success : AppColors.destructive;
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(AppSpacing.lg),
+        child: Row(
+          children: [
+            Expanded(child: _summaryStat('Revenue', revenue, AppColors.accent)),
+            Expanded(child: _summaryStat('Expenses', expenseTotal, AppColors.warning)),
+            Expanded(child: _summaryStat('Profit', profit, color)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _summaryStat(String label, int value, Color color) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label, style: TextStyle(color: Colors.grey.shade600, fontSize: 12)),
+        const SizedBox(height: AppSpacing.xs),
+        Text(_money(value), style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16, color: color)),
+      ],
     );
   }
 
@@ -509,49 +526,102 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
     final catches = _catches!;
     final sales = _sales!;
     return [
-      Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text('Catch', style: Theme.of(context).textTheme.titleMedium),
-          TextButton(onPressed: _showAddCatchDialog, child: const Text('+ Record Catch')),
-        ],
-      ),
-      ...catches.map((c) => ListTile(
-            title: Text(_fishCategoriesByUuid[c.fishCategoryUuid]?.name ?? c.fishCategoryUuid),
-            trailing: Text('${c.weightKg} kg'),
-          )),
-      const Divider(),
-      Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text('Fish Sales', style: Theme.of(context).textTheme.titleMedium),
-          TextButton(onPressed: _showAddFishSaleDialog, child: const Text('+ Sell Catch')),
-        ],
-      ),
-      ...sales.map((s) => ListTile(
-            title: Text(_fishCategoriesByUuid[s.fishCategoryUuid]?.name ?? s.fishCategoryUuid),
-            subtitle: Text('${s.weightKg} kg @ ${_money(s.unitPriceMinorUnitsPerKg)}/kg  •  ${s.paymentMethod.name}'),
-            trailing: Text(_money(s.totalMinorUnits)),
-          )),
+      _SectionHeader(title: 'Catch', actionLabel: 'Record Catch', onAction: _showAddCatchDialog),
+      const SizedBox(height: AppSpacing.sm),
+      if (catches.isEmpty)
+        _emptyHint('No catch recorded yet')
+      else
+        ...catches.map((c) => _Row(
+              icon: Icons.set_meal_outlined,
+              title: _fishCategoriesByUuid[c.fishCategoryUuid]?.name ?? c.fishCategoryUuid,
+              trailing: '${c.weightKg} kg',
+            )),
+      const SizedBox(height: AppSpacing.lg),
+      _SectionHeader(title: 'Fish Sales', actionLabel: 'Sell Catch', onAction: _showAddFishSaleDialog),
+      const SizedBox(height: AppSpacing.sm),
+      if (sales.isEmpty)
+        _emptyHint('No fish sold from this trip yet')
+      else
+        ...sales.map((s) => _Row(
+              icon: Icons.sell_outlined,
+              title: _fishCategoriesByUuid[s.fishCategoryUuid]?.name ?? s.fishCategoryUuid,
+              subtitle: '${s.weightKg} kg @ ${_money(s.unitPriceMinorUnitsPerKg)}/kg  •  ${s.paymentMethod.name}',
+              trailing: _money(s.totalMinorUnits),
+            )),
     ];
   }
 
   List<Widget> _buildTransportSections(BuildContext context) {
     final incomes = _incomes!;
     return [
-      Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text('Trip Income', style: Theme.of(context).textTheme.titleMedium),
-          TextButton(onPressed: _showAddTripIncomeDialog, child: const Text('+ Add Income')),
-        ],
-      ),
-      ...incomes.map((i) => ListTile(
-            title: Text(i.description ?? 'Trip income'),
-            subtitle: Text(i.paymentMethod.name),
-            trailing: Text(_money(i.amountMinorUnits)),
-          )),
+      _SectionHeader(title: 'Trip Income', actionLabel: 'Add Income', onAction: _showAddTripIncomeDialog),
+      const SizedBox(height: AppSpacing.sm),
+      if (incomes.isEmpty)
+        _emptyHint('No income logged for this trip yet')
+      else
+        ...incomes.map((i) => _Row(
+              icon: Icons.payments_outlined,
+              title: i.description ?? 'Trip income',
+              subtitle: i.paymentMethod.name,
+              trailing: _money(i.amountMinorUnits),
+            )),
     ];
+  }
+}
+
+Widget _emptyHint(String text) => Padding(
+      padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
+      child: Text(text, style: TextStyle(color: Colors.grey.shade600)),
+    );
+
+class _SectionHeader extends StatelessWidget {
+  const _SectionHeader({required this.title, required this.actionLabel, required this.onAction});
+
+  final String title;
+  final String actionLabel;
+  final VoidCallback onAction;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(title, style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
+        OutlinedButton.icon(
+          onPressed: onAction,
+          icon: const Icon(Icons.add, size: 16),
+          label: Text(actionLabel),
+        ),
+      ],
+    );
+  }
+}
+
+class _Row extends StatelessWidget {
+  const _Row({required this.icon, required this.title, this.subtitle, required this.trailing});
+
+  final IconData icon;
+  final String title;
+  final String? subtitle;
+  final String trailing;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      margin: const EdgeInsets.only(bottom: AppSpacing.sm),
+      child: ListTile(
+        contentPadding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg, vertical: AppSpacing.xs),
+        leading: Container(
+          width: 36,
+          height: 36,
+          decoration: BoxDecoration(color: AppColors.accent.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(8)),
+          child: Icon(icon, color: AppColors.accent, size: 16),
+        ),
+        title: Text(title),
+        subtitle: subtitle != null ? Text(subtitle!) : null,
+        trailing: Text(trailing, style: const TextStyle(fontWeight: FontWeight.w700)),
+      ),
+    );
   }
 }
 

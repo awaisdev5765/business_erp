@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/accounting/fixed_asset.dart';
 import '../../core/system/providers.dart';
+import '../../shared/theme/app_theme.dart';
 
 class FixedAssetsScreen extends ConsumerStatefulWidget {
   const FixedAssetsScreen({super.key});
@@ -55,16 +56,19 @@ class _FixedAssetsScreenState extends ConsumerState<FixedAssetsScreen> {
           mainAxisSize: MainAxisSize.min,
           children: [
             TextField(controller: nameController, decoration: const InputDecoration(labelText: 'Name')),
+            const SizedBox(height: AppSpacing.md),
             TextField(
               controller: costController,
               decoration: const InputDecoration(labelText: 'Acquisition cost'),
               keyboardType: TextInputType.number,
             ),
+            const SizedBox(height: AppSpacing.md),
             TextField(
               controller: lifeController,
               decoration: const InputDecoration(labelText: 'Useful life (months)'),
               keyboardType: TextInputType.number,
             ),
+            const SizedBox(height: AppSpacing.md),
             TextField(
               controller: salvageController,
               decoration: const InputDecoration(labelText: 'Salvage value'),
@@ -126,23 +130,42 @@ class _FixedAssetsScreenState extends ConsumerState<FixedAssetsScreen> {
       body: assets == null
           ? const Center(child: CircularProgressIndicator())
           : assets.isEmpty
-              ? const Center(child: Text('No fixed assets yet — tap + to add one.'))
-              : ListView.builder(
+              ? Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.precision_manufacturing_outlined, size: 40, color: Colors.grey.shade400),
+                      const SizedBox(height: AppSpacing.md),
+                      const Text('No fixed assets yet — tap + to add one.'),
+                    ],
+                  ),
+                )
+              : ListView.separated(
+                  padding: const EdgeInsets.all(AppSpacing.lg),
                   itemCount: assets.length,
+                  separatorBuilder: (_, _) => const SizedBox(height: AppSpacing.sm),
                   itemBuilder: (context, index) {
                     final asset = assets[index];
                     final bookValue = _bookValues[asset.uuid];
-                    return ListTile(
-                      leading: const Icon(Icons.inventory_outlined),
-                      title: Text(asset.name),
-                      subtitle: Text(
-                        'Cost: ${_money(asset.acquisitionCostMinorUnits)}  •  '
-                        '${_money(asset.monthlyDepreciationMinorUnits)}/mo  •  '
-                        'Book value: ${bookValue != null ? _money(bookValue) : '…'}',
-                      ),
-                      trailing: TextButton(
-                        onPressed: () => _postDepreciation(asset),
-                        child: const Text('Post Depreciation'),
+                    return Card(
+                      child: ListTile(
+                        contentPadding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg, vertical: AppSpacing.xs),
+                        leading: Container(
+                          width: 40,
+                          height: 40,
+                          decoration: BoxDecoration(color: AppColors.accent.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(8)),
+                          child: const Icon(Icons.precision_manufacturing_outlined, color: AppColors.accent, size: 18),
+                        ),
+                        title: Text(asset.name),
+                        subtitle: Text(
+                          'Cost: ${_money(asset.acquisitionCostMinorUnits)}  •  '
+                          '${_money(asset.monthlyDepreciationMinorUnits)}/mo  •  '
+                          'Book value: ${bookValue != null ? _money(bookValue) : '…'}',
+                        ),
+                        trailing: OutlinedButton(
+                          onPressed: () => _postDepreciation(asset),
+                          child: const Text('Post Depreciation'),
+                        ),
                       ),
                     );
                   },

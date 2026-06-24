@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/party/party.dart';
 import '../../core/system/providers.dart';
+import '../../shared/theme/app_theme.dart';
 import 'contract.dart';
 
 class ContractsScreen extends ConsumerStatefulWidget {
@@ -69,7 +70,9 @@ class _ContractsScreenState extends ConsumerState<ContractsScreen> {
                 items: customers.map((c) => DropdownMenuItem(value: c, child: Text(c.name))).toList(),
                 onChanged: (v) => setDialogState(() => selectedCustomer = v ?? customers.first),
               ),
+              const SizedBox(height: AppSpacing.md),
               TextField(controller: descController, decoration: const InputDecoration(labelText: 'Description')),
+              const SizedBox(height: AppSpacing.md),
               TextField(
                 controller: rateController,
                 decoration: const InputDecoration(labelText: 'Rate per trip (optional)'),
@@ -106,18 +109,37 @@ class _ContractsScreenState extends ConsumerState<ContractsScreen> {
       body: contracts == null
           ? const Center(child: CircularProgressIndicator())
           : contracts.isEmpty
-              ? const Center(child: Text('No contracts yet — tap + to add one.'))
-              : ListView.builder(
+              ? Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.description_outlined, size: 40, color: Colors.grey.shade400),
+                      const SizedBox(height: AppSpacing.md),
+                      const Text('No contracts yet — tap + to add one.'),
+                    ],
+                  ),
+                )
+              : ListView.separated(
+                  padding: const EdgeInsets.all(AppSpacing.lg),
                   itemCount: contracts.length,
+                  separatorBuilder: (_, _) => const SizedBox(height: AppSpacing.sm),
                   itemBuilder: (context, index) {
                     final contract = contracts[index];
-                    return ListTile(
-                      leading: const Icon(Icons.description_outlined),
-                      title: Text(contract.description),
-                      subtitle: Text(_customersByUuid[contract.customerUuid]?.name ?? contract.customerUuid),
-                      trailing: contract.ratePerTripMinorUnits != null
-                          ? Text(_money(contract.ratePerTripMinorUnits!))
-                          : null,
+                    return Card(
+                      child: ListTile(
+                        contentPadding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg, vertical: AppSpacing.xs),
+                        leading: Container(
+                          width: 40,
+                          height: 40,
+                          decoration: BoxDecoration(color: AppColors.accent.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(8)),
+                          child: const Icon(Icons.description_outlined, color: AppColors.accent, size: 18),
+                        ),
+                        title: Text(contract.description),
+                        subtitle: Text(_customersByUuid[contract.customerUuid]?.name ?? contract.customerUuid),
+                        trailing: contract.ratePerTripMinorUnits != null
+                            ? Text(_money(contract.ratePerTripMinorUnits!), style: const TextStyle(fontWeight: FontWeight.w700))
+                            : null,
+                      ),
                     );
                   },
                 ),

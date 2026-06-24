@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/sync/conflict_record.dart';
 import '../../core/sync/sync_queue_item.dart';
 import '../../core/system/providers.dart';
+import '../../shared/theme/app_theme.dart';
 
 /// Shows what's waiting to sync and any conflicts needing a decision,
 /// plus a manual "Sync Now" trigger (`FirestoreSyncService.syncAll` —
@@ -86,11 +87,11 @@ class _SyncStatusScreenState extends ConsumerState<SyncStatusScreen> {
         title: const Text('Sync Status'),
         actions: [
           Padding(
-            padding: const EdgeInsets.only(right: 8),
+            padding: const EdgeInsets.only(right: AppSpacing.sm),
             child: _syncing
                 ? const Padding(
                     padding: EdgeInsets.all(12),
-                    child: SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)),
+                    child: SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
                   )
                 : IconButton(icon: const Icon(Icons.sync), tooltip: 'Sync Now', onPressed: _syncNow),
           ),
@@ -99,38 +100,58 @@ class _SyncStatusScreenState extends ConsumerState<SyncStatusScreen> {
       body: RefreshIndicator(
         onRefresh: _load,
         child: ListView(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.all(AppSpacing.xl),
           children: [
-            const SizedBox(height: 16),
-            Wrap(
-              spacing: 16,
-              runSpacing: 16,
-              children: [
-                _StatChip(label: 'Pending', count: pending, color: Colors.orange),
-                _StatChip(label: 'Failed', count: failed, color: Colors.red),
-                _StatChip(label: 'Synced', count: synced, color: Colors.green),
-                _StatChip(label: 'Conflicts', count: conflicts.length, color: Colors.purple),
-              ],
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final columns = constraints.maxWidth >= 700 ? 4 : 2;
+                return GridView.count(
+                  crossAxisCount: columns,
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  mainAxisSpacing: AppSpacing.md,
+                  crossAxisSpacing: AppSpacing.md,
+                  childAspectRatio: 2.2,
+                  children: [
+                    _StatCard(label: 'Pending', count: pending, icon: Icons.schedule, color: AppColors.warning),
+                    _StatCard(label: 'Failed', count: failed, icon: Icons.error_outline, color: AppColors.destructive),
+                    _StatCard(label: 'Synced', count: synced, icon: Icons.check_circle_outline, color: AppColors.success),
+                    _StatCard(label: 'Conflicts', count: conflicts.length, icon: Icons.warning_amber, color: AppColors.accent),
+                  ],
+                );
+              },
             ),
-            const SizedBox(height: 24),
+            const SizedBox(height: AppSpacing.xl),
             if (conflicts.isNotEmpty) ...[
-              Text('Needs Your Decision', style: Theme.of(context).textTheme.titleMedium),
-              ...conflicts.map((c) => ListTile(
-                    leading: const Icon(Icons.warning_amber, color: Colors.purple),
-                    title: Text('${c.entityType} ${c.entityId.substring(0, 8)}'),
-                    subtitle: Text('Conflicting fields: ${c.conflictingFields.join(', ')}'),
+              Text('Needs Your Decision', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
+              const SizedBox(height: AppSpacing.sm),
+              ...conflicts.map((c) => Card(
+                    child: ListTile(
+                      contentPadding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg, vertical: AppSpacing.xs),
+                      leading: const Icon(Icons.warning_amber, color: AppColors.accent),
+                      title: Text('${c.entityType} ${c.entityId.substring(0, 8)}'),
+                      subtitle: Text('Conflicting fields: ${c.conflictingFields.join(', ')}'),
+                    ),
                   )),
-              const Divider(),
+              const SizedBox(height: AppSpacing.lg),
             ],
-            Text('Queue', style: Theme.of(context).textTheme.titleMedium),
+            Text('Queue', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
+            const SizedBox(height: AppSpacing.sm),
             if (items.isEmpty)
-              const Padding(padding: EdgeInsets.all(16), child: Text('Nothing queued yet.'))
+              Padding(
+                padding: const EdgeInsets.all(AppSpacing.lg),
+                child: Text('Nothing queued yet.', style: TextStyle(color: Colors.grey.shade600)),
+              )
             else
-              ...items.map((item) => ListTile(
-                    leading: Icon(_statusIcon(item.status), color: _statusColor(item.status)),
-                    title: Text('${item.operation.name} ${item.entityType} ${item.entityId.substring(0, 8)}'),
-                    subtitle: item.lastError != null ? Text(item.lastError!) : null,
-                    trailing: item.attempts > 0 ? Text('${item.attempts} attempt(s)') : null,
+              ...items.map((item) => Card(
+                    margin: const EdgeInsets.only(bottom: AppSpacing.sm),
+                    child: ListTile(
+                      contentPadding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg, vertical: AppSpacing.xs),
+                      leading: Icon(_statusIcon(item.status), color: _statusColor(item.status)),
+                      title: Text('${item.operation.name} ${item.entityType} ${item.entityId.substring(0, 8)}'),
+                      subtitle: item.lastError != null ? Text(item.lastError!) : null,
+                      trailing: item.attempts > 0 ? Text('${item.attempts} attempt(s)') : null,
+                    ),
                   )),
           ],
         ),
@@ -139,18 +160,41 @@ class _SyncStatusScreenState extends ConsumerState<SyncStatusScreen> {
   }
 }
 
-class _StatChip extends StatelessWidget {
-  const _StatChip({required this.label, required this.count, required this.color});
+class _StatCard extends StatelessWidget {
+  const _StatCard({required this.label, required this.count, required this.icon, required this.color});
 
   final String label;
   final int count;
+  final IconData icon;
   final Color color;
 
   @override
   Widget build(BuildContext context) {
-    return Chip(
-      avatar: CircleAvatar(backgroundColor: color, child: Text('$count', style: const TextStyle(color: Colors.white, fontSize: 12))),
-      label: Text(label),
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(AppSpacing.md),
+        child: Row(
+          children: [
+            Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(color: color.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(8)),
+              child: Icon(icon, color: color, size: 18),
+            ),
+            const SizedBox(width: AppSpacing.md),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(label, style: TextStyle(color: Colors.grey.shade600, fontSize: 12)),
+                  Text('$count', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 18)),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -173,14 +217,14 @@ IconData _statusIcon(SyncQueueStatus status) {
 Color _statusColor(SyncQueueStatus status) {
   switch (status) {
     case SyncQueueStatus.pending:
-      return Colors.orange;
+      return AppColors.warning;
     case SyncQueueStatus.syncing:
-      return Colors.blue;
+      return AppColors.accent;
     case SyncQueueStatus.synced:
-      return Colors.green;
+      return AppColors.success;
     case SyncQueueStatus.failed:
-      return Colors.red;
+      return AppColors.destructive;
     case SyncQueueStatus.conflict:
-      return Colors.purple;
+      return AppColors.accent;
   }
 }

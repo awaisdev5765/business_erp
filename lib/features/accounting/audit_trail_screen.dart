@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/system/audit_log.dart';
 import '../../core/system/providers.dart';
+import '../../shared/theme/app_theme.dart';
 
 /// Read-only view of every Void/Reversal action — see PHASES.md Section
 /// 16 ("Audit Trail") and AuditLogRepository for what gets logged here.
@@ -37,19 +38,37 @@ class _AuditTrailScreenState extends ConsumerState<AuditTrailScreen> {
       body: logs == null
           ? const Center(child: CircularProgressIndicator())
           : logs.isEmpty
-              ? const Center(child: Text('No void or reversal actions yet'))
-              : ListView.builder(
+              ? Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.history_outlined, size: 40, color: Colors.grey.shade400),
+                      const SizedBox(height: AppSpacing.md),
+                      const Text('No void or reversal actions yet'),
+                    ],
+                  ),
+                )
+              : ListView.separated(
+                  padding: const EdgeInsets.all(AppSpacing.lg),
                   itemCount: logs.length,
+                  separatorBuilder: (_, _) => const SizedBox(height: AppSpacing.sm),
                   itemBuilder: (context, index) {
                     final log = logs[index];
-                    return ListTile(
-                      leading: Icon(
-                        log.action == 'void' ? Icons.block : Icons.undo,
-                        color: log.action == 'void' ? Colors.red : Colors.orange,
+                    final isVoid = log.action == 'void';
+                    final color = isVoid ? AppColors.destructive : AppColors.warning;
+                    return Card(
+                      child: ListTile(
+                        contentPadding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg, vertical: AppSpacing.sm),
+                        leading: Container(
+                          width: 40,
+                          height: 40,
+                          decoration: BoxDecoration(color: color.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(8)),
+                          child: Icon(isVoid ? Icons.block : Icons.undo, color: color, size: 18),
+                        ),
+                        title: Text('${log.action.toUpperCase()} ${log.entityType} ${log.entityId.substring(0, 8)}'),
+                        subtitle: Text('${log.details ?? ''}\nBy ${log.performedBy} at ${_formatDateTime(log.performedAt)}'),
+                        isThreeLine: true,
                       ),
-                      title: Text('${log.action.toUpperCase()} ${log.entityType} ${log.entityId.substring(0, 8)}'),
-                      subtitle: Text('${log.details ?? ''}\nBy ${log.performedBy} at ${_formatDateTime(log.performedAt)}'),
-                      isThreeLine: true,
                     );
                   },
                 ),

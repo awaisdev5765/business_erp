@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/accounting/bank_account.dart';
 import '../../core/system/providers.dart';
+import '../../shared/theme/app_theme.dart';
 import 'bank_reconciliation_screen.dart';
 
 class BankAccountsScreen extends ConsumerStatefulWidget {
@@ -40,10 +41,14 @@ class _BankAccountsScreenState extends ConsumerState<BankAccountsScreen> {
         title: const Text('New Bank Account'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             TextField(controller: nameController, decoration: const InputDecoration(labelText: 'Account name')),
+            const SizedBox(height: AppSpacing.md),
             TextField(controller: bankController, decoration: const InputDecoration(labelText: 'Bank name')),
+            const SizedBox(height: AppSpacing.md),
             TextField(controller: numberController, decoration: const InputDecoration(labelText: 'Account number')),
+            const SizedBox(height: AppSpacing.md),
             TextField(
               controller: openingController,
               decoration: const InputDecoration(labelText: 'Opening balance'),
@@ -81,18 +86,37 @@ class _BankAccountsScreenState extends ConsumerState<BankAccountsScreen> {
       body: accounts == null
           ? const Center(child: CircularProgressIndicator())
           : accounts.isEmpty
-              ? const Center(child: Text('No bank accounts yet — tap + to add one.'))
-              : ListView.builder(
+              ? Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.account_balance_outlined, size: 40, color: Colors.grey.shade400),
+                      const SizedBox(height: AppSpacing.md),
+                      const Text('No bank accounts yet — tap + to add one.'),
+                    ],
+                  ),
+                )
+              : ListView.separated(
+                  padding: const EdgeInsets.all(AppSpacing.lg),
                   itemCount: accounts.length,
+                  separatorBuilder: (_, _) => const SizedBox(height: AppSpacing.sm),
                   itemBuilder: (context, index) {
                     final account = accounts[index];
-                    return ListTile(
-                      leading: const Icon(Icons.account_balance_outlined),
-                      title: Text(account.name),
-                      subtitle: Text('${account.bankName ?? ''} ${account.accountNumber ?? ''}'.trim()),
-                      trailing: const Icon(Icons.chevron_right),
-                      onTap: () => Navigator.of(context).push(
-                        MaterialPageRoute(builder: (_) => BankReconciliationScreen(account: account)),
+                    return Card(
+                      child: ListTile(
+                        contentPadding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg, vertical: AppSpacing.xs),
+                        leading: Container(
+                          width: 40,
+                          height: 40,
+                          decoration: BoxDecoration(color: AppColors.accent.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(8)),
+                          child: const Icon(Icons.account_balance_outlined, color: AppColors.accent, size: 18),
+                        ),
+                        title: Text(account.name),
+                        subtitle: Text('${account.bankName ?? ''} ${account.accountNumber ?? ''}'.trim()),
+                        trailing: const Icon(Icons.chevron_right),
+                        onTap: () => Navigator.of(context).push(
+                          MaterialPageRoute(builder: (_) => BankReconciliationScreen(account: account)),
+                        ),
                       ),
                     );
                   },

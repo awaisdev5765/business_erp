@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/party/party.dart';
 import '../../core/system/providers.dart';
+import '../../shared/theme/app_theme.dart';
 
 /// A registry of [Party] records for one or more crew-like roles —
 /// Captains+Crew for Fishery, Drivers for Transport. Same model
@@ -70,6 +71,7 @@ class _CrewScreenState extends ConsumerState<CrewScreen> {
                   onChanged: (v) => setDialogState(() => type = v ?? widget.roles.first),
                 ),
               TextField(controller: nameController, decoration: const InputDecoration(labelText: 'Name')),
+              const SizedBox(height: AppSpacing.md),
               TextField(controller: phoneController, decoration: const InputDecoration(labelText: 'Phone')),
             ],
           ),
@@ -103,19 +105,37 @@ class _CrewScreenState extends ConsumerState<CrewScreen> {
       body: people == null
           ? const Center(child: CircularProgressIndicator())
           : people.isEmpty
-              ? const Center(child: Text('No one yet — tap + to add one.'))
-              : ListView.builder(
+              ? Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.groups_outlined, size: 40, color: Colors.grey.shade400),
+                      const SizedBox(height: AppSpacing.md),
+                      const Text('No one yet — tap + to add one.'),
+                    ],
+                  ),
+                )
+              : ListView.separated(
+                  padding: const EdgeInsets.all(AppSpacing.lg),
                   itemCount: people.length,
+                  separatorBuilder: (_, _) => const SizedBox(height: AppSpacing.sm),
                   itemBuilder: (context, index) {
                     final person = people[index];
-                    return ListTile(
-                      leading: const Icon(Icons.person_outline),
-                      title: Text(person.name),
-                      subtitle: Text(
-                        '${widget.roleLabels[person.type] ?? person.type.name}${person.phone != null ? ' • ${person.phone}' : ''}',
+                    return Card(
+                      child: ListTile(
+                        contentPadding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg, vertical: AppSpacing.xs),
+                        leading: CircleAvatar(
+                          backgroundColor: AppColors.accent.withValues(alpha: 0.12),
+                          foregroundColor: AppColors.accent,
+                          child: const Icon(Icons.person_outline, size: 18),
+                        ),
+                        title: Text(person.name),
+                        subtitle: Text(
+                          '${widget.roleLabels[person.type] ?? person.type.name}${person.phone != null ? ' • ${person.phone}' : ''}',
+                        ),
+                        trailing: widget.onTapPerson != null ? const Icon(Icons.chevron_right) : null,
+                        onTap: widget.onTapPerson != null ? () => widget.onTapPerson!(context, person) : null,
                       ),
-                      trailing: widget.onTapPerson != null ? const Icon(Icons.chevron_right) : null,
-                      onTap: widget.onTapPerson != null ? () => widget.onTapPerson!(context, person) : null,
                     );
                   },
                 ),

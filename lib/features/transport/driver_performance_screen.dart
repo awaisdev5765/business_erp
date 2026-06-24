@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/party/party.dart';
 import '../../core/system/providers.dart';
+import '../../shared/theme/app_theme.dart';
 
 class DriverPerformanceScreen extends ConsumerStatefulWidget {
   const DriverPerformanceScreen({super.key, required this.driver});
@@ -43,28 +44,84 @@ class _DriverPerformanceScreenState extends ConsumerState<DriverPerformanceScree
       body: revenue == null || expense == null
           ? const Center(child: CircularProgressIndicator())
           : Padding(
-              padding: const EdgeInsets.all(16),
-              child: Card(
-                color: revenue - expense >= 0 ? Colors.green.shade50 : Colors.red.shade50,
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('Lifetime totals across every trip', style: Theme.of(context).textTheme.titleMedium),
-                      const SizedBox(height: 12),
-                      Text('Revenue earned: ${_money(revenue)}'),
-                      Text('Expenses incurred: ${_money(expense)}'),
-                      const Divider(),
-                      Text(
-                        'Net: ${_money(revenue - expense)}',
-                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
-                      ),
-                    ],
+              padding: const EdgeInsets.all(AppSpacing.xl),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Lifetime totals across every trip',
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.grey.shade600),
                   ),
-                ),
+                  const SizedBox(height: AppSpacing.xl),
+                  LayoutBuilder(
+                    builder: (context, constraints) {
+                      final columns = constraints.maxWidth >= 700 ? 3 : 1;
+                      return GridView.count(
+                        crossAxisCount: columns,
+                        shrinkWrap: true,
+                        physics: const NeverScrollableScrollPhysics(),
+                        mainAxisSpacing: AppSpacing.lg,
+                        crossAxisSpacing: AppSpacing.lg,
+                        childAspectRatio: 2.4,
+                        children: [
+                          _StatCard(label: 'Revenue Earned', value: revenue, icon: Icons.trending_up, color: AppColors.success),
+                          _StatCard(label: 'Expenses Incurred', value: expense, icon: Icons.trending_down, color: AppColors.warning),
+                          _StatCard(
+                            label: 'Net',
+                            value: revenue - expense,
+                            icon: Icons.account_balance_wallet_outlined,
+                            color: revenue - expense >= 0 ? AppColors.success : AppColors.destructive,
+                          ),
+                        ],
+                      );
+                    },
+                  ),
+                ],
               ),
             ),
+    );
+  }
+}
+
+class _StatCard extends StatelessWidget {
+  const _StatCard({required this.label, required this.value, required this.icon, required this.color});
+
+  final String label;
+  final int value;
+  final IconData icon;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(AppSpacing.lg),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(color: color.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(8)),
+              child: Icon(icon, color: color, size: 20),
+            ),
+            const SizedBox(width: AppSpacing.lg),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(label, style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.grey.shade600)),
+                  const SizedBox(height: AppSpacing.xs),
+                  Text(
+                    _money(value),
+                    style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w700),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

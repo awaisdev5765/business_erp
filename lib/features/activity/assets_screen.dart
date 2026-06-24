@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/asset/operating_asset.dart';
 import '../../core/system/providers.dart';
+import '../../shared/theme/app_theme.dart';
 import 'asset_ledger_screen.dart';
 
 /// Shared between Fishery (Boats) and Transport (Vehicles) — same fields,
@@ -49,6 +50,7 @@ class _AssetsScreenState extends ConsumerState<AssetsScreen> {
           mainAxisSize: MainAxisSize.min,
           children: [
             TextField(controller: nameController, decoration: InputDecoration(labelText: '$_label name')),
+            const SizedBox(height: AppSpacing.md),
             TextField(controller: regController, decoration: const InputDecoration(labelText: 'Registration number')),
           ],
         ),
@@ -81,18 +83,37 @@ class _AssetsScreenState extends ConsumerState<AssetsScreen> {
       body: assets == null
           ? const Center(child: CircularProgressIndicator())
           : assets.isEmpty
-              ? Center(child: Text('No ${_labelPlural.toLowerCase()} yet — tap + to add one.'))
-              : ListView.builder(
+              ? Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(_icon, size: 40, color: Colors.grey.shade400),
+                      const SizedBox(height: AppSpacing.md),
+                      Text('No ${_labelPlural.toLowerCase()} yet — tap + to add one.'),
+                    ],
+                  ),
+                )
+              : ListView.separated(
+                  padding: const EdgeInsets.all(AppSpacing.lg),
                   itemCount: assets.length,
+                  separatorBuilder: (_, _) => const SizedBox(height: AppSpacing.sm),
                   itemBuilder: (context, index) {
                     final asset = assets[index];
-                    return ListTile(
-                      leading: Icon(_icon),
-                      title: Text(asset.name),
-                      subtitle: asset.registrationNumber != null ? Text(asset.registrationNumber!) : null,
-                      trailing: const Icon(Icons.chevron_right),
-                      onTap: () => Navigator.of(context).push(
-                        MaterialPageRoute(builder: (_) => AssetLedgerScreen(asset: asset)),
+                    return Card(
+                      child: ListTile(
+                        contentPadding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg, vertical: AppSpacing.xs),
+                        leading: Container(
+                          width: 40,
+                          height: 40,
+                          decoration: BoxDecoration(color: AppColors.accent.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(8)),
+                          child: Icon(_icon, color: AppColors.accent, size: 18),
+                        ),
+                        title: Text(asset.name),
+                        subtitle: asset.registrationNumber != null ? Text(asset.registrationNumber!) : null,
+                        trailing: const Icon(Icons.chevron_right),
+                        onTap: () => Navigator.of(context).push(
+                          MaterialPageRoute(builder: (_) => AssetLedgerScreen(asset: asset)),
+                        ),
                       ),
                     );
                   },

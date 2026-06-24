@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/system/providers.dart';
+import '../../shared/theme/app_theme.dart';
 import '../spare_parts/sales/sale.dart';
 
 /// Every credit Sale held `pendingApproval` because it exceeded the
@@ -58,16 +59,35 @@ class _ApprovalsScreenState extends ConsumerState<ApprovalsScreen> {
       body: pending == null
           ? const Center(child: CircularProgressIndicator())
           : pending.isEmpty
-              ? const Center(child: Text('Nothing waiting on approval.'))
-              : ListView.builder(
+              ? Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.fact_check_outlined, size: 40, color: Colors.grey.shade400),
+                      const SizedBox(height: AppSpacing.md),
+                      const Text('Nothing waiting on approval.'),
+                    ],
+                  ),
+                )
+              : ListView.separated(
+                  padding: const EdgeInsets.all(AppSpacing.lg),
                   itemCount: pending.length,
+                  separatorBuilder: (_, _) => const SizedBox(height: AppSpacing.sm),
                   itemBuilder: (context, index) {
                     final sale = pending[index];
-                    return ListTile(
-                      leading: const Icon(Icons.hourglass_top, color: Colors.orange),
-                      title: Text('Sale ${sale.documentNumber}'),
-                      subtitle: Text('${_money(sale.grandTotalMinorUnits)}  •  ${_formatDate(sale.date)}'),
-                      trailing: FilledButton(onPressed: () => _approve(sale), child: const Text('Approve')),
+                    return Card(
+                      child: ListTile(
+                        contentPadding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg, vertical: AppSpacing.sm),
+                        leading: Container(
+                          width: 40,
+                          height: 40,
+                          decoration: BoxDecoration(color: AppColors.warning.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(8)),
+                          child: const Icon(Icons.hourglass_top, color: AppColors.warning, size: 18),
+                        ),
+                        title: Text('Sale ${sale.documentNumber}'),
+                        subtitle: Text('${_money(sale.grandTotalMinorUnits)}  •  ${_formatDate(sale.date)}'),
+                        trailing: FilledButton(onPressed: () => _approve(sale), child: const Text('Approve')),
+                      ),
                     );
                   },
                 ),
