@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/system/providers.dart';
+import '../../shared/pdf/report_pdf.dart';
 import '../../shared/theme/app_theme.dart';
 
 /// Trial Balance: every account's Dr/Cr totals and net balance — the
@@ -50,7 +51,33 @@ class _TrialBalanceScreenState extends ConsumerState<TrialBalanceScreen> {
     final visibleRows = rows.where((r) => (r['total_debit'] as int) != 0 || (r['total_credit'] as int) != 0).toList();
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Trial Balance')),
+      appBar: AppBar(
+        title: const Text('Trial Balance'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.print_outlined),
+            tooltip: 'Export PDF',
+            onPressed: () async {
+              final business = await ref.read(currentBusinessProvider.future);
+              await ReportPdf.printTrialBalance(
+                businessName: business.name,
+                rows: [
+                  for (final r in visibleRows)
+                    (
+                      code: r['code'] as String,
+                      name: r['name'] as String,
+                      type: r['type'] as String,
+                      debit: r['total_debit'] as int,
+                      credit: r['total_credit'] as int,
+                    ),
+                ],
+                totalDebit: totalDebit,
+                totalCredit: totalCredit,
+              );
+            },
+          ),
+        ],
+      ),
       body: Column(
         children: [
           Expanded(

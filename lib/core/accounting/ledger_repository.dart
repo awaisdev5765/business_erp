@@ -413,4 +413,44 @@ class LedgerRepository {
       ORDER BY a.code ASC
     ''', [JournalEntryStatus.void_.name, businessId]);
   }
+
+  /// Same shape as [trialBalance], but restricted to entries dated
+  /// within [from]/[to] (either or both may be omitted) — for P&L's date
+  /// filter. Always scans raw `journal_lines` rather than the rollup
+  /// fast path: the rollup tables only ever hold running all-time
+  /// totals, not a per-day breakdown, so there's no way to satisfy a
+  /// date range from them. Date conditions live in the JOIN's `ON`
+  /// clause, not `WHERE`, so an account with zero activity in the range
+  /// still appears with 0/0 rather than being dropped by the LEFT JOIN.
+  Future<List<Map<String, Object?>>> trialBalanceForRange({
+    required String businessId,
+    DateTime? from,
+    DateTime? to,
+  }) async {
+    final dateConditions = <String>[];
+    final dateArgs = <Object?>[];
+    if (from != null) {
+      dateConditions.add('je.date >= ?');
+      dateArgs.add(from.toIso8601String());
+    }
+    if (to != null) {
+      dateConditions.add('je.date <= ?');
+      dateArgs.add(to.toIso8601String());
+    }
+    final dateClause = dateConditions.isEmpty ? '' : 'AND ${dateConditions.join(' AND ')}';
+
+    return db.rawQuery('''
+      SELECT a.code, a.name, a.type,
+             COALESCE(SUM(jl.debit_minor_units), 0) AS total_debit,
+             COALESCE(SUM(jl.credit_minor_units), 0) AS total_credit
+      FROM ${Account.tableName} a
+      LEFT JOIN ${JournalEntry.tableName} je
+        ON je.business_id = a.business_id AND je.status != ? $dateClause
+      LEFT JOIN ${JournalLine.tableName} jl
+        ON jl.entry_uuid = je.uuid AND jl.account_code = a.code
+      WHERE a.business_id = ?
+      GROUP BY a.code, a.name, a.type
+      ORDER BY a.code ASC
+    ''', [JournalEntryStatus.void_.name, ...dateArgs, businessId]);
+  }
 }
