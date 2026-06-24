@@ -37,11 +37,18 @@ class AppSidebar extends StatelessWidget {
     required this.header,
     required this.groups,
     required this.footer,
+    this.dangerZone,
   });
 
   final Widget header;
   final List<AppSidebarGroup> groups;
   final Widget footer;
+
+  /// Optional — rendered between the nav groups and the footer, with
+  /// its own divider either side. Super-Admin-only destructive actions
+  /// (see app.dart's "Wipe All Data") live here, visually set apart
+  /// from ordinary navigation so they're never one misclick away.
+  final Widget? dangerZone;
 
   @override
   Widget build(BuildContext context) {
@@ -66,6 +73,10 @@ class AppSidebar extends StatelessWidget {
               ],
             ),
           ),
+          if (dangerZone != null) ...[
+            Divider(color: borderColor, height: 1),
+            dangerZone!,
+          ],
           Divider(color: borderColor, height: 1),
           footer,
         ],

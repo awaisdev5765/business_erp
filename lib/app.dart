@@ -386,6 +386,137 @@ class _AppShellState extends ConsumerState<AppShell>
     }
   }
 
+  /// Two distinct safeguards before this irreversible action runs: a
+  /// typed confirmation phrase (catches a misclick) and the Super
+  /// Admin's own password re-entered (catches an unattended device) —
+  /// see DataWipeService for what actually gets deleted and the one
+  /// thing it *can't* delete (staff Firebase Auth logins themselves,
+  /// no Admin SDK client-side; their access is stripped instead).
+  Future<void> _showWipeDataDialog() async {
+    final confirmController = TextEditingController();
+    const confirmPhrase = 'DELETE ALL DATA';
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Wipe All Data?'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'This permanently deletes every business, ledger, product, party, and staff '
+                "access grant — on this device and in Firestore. There's no undo. Staff "
+                "logins themselves aren't deleted (that needs the Firebase Console), but "
+                'they lose all access.',
+              ),
+              const SizedBox(height: AppSpacing.lg),
+              Text('Type "$confirmPhrase" to continue:', style: const TextStyle(fontWeight: FontWeight.w600)),
+              const SizedBox(height: AppSpacing.sm),
+              TextField(
+                controller: confirmController,
+                autofocus: true,
+                onChanged: (_) => setDialogState(() {}),
+                decoration: const InputDecoration(border: OutlineInputBorder()),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+            FilledButton(
+              style: FilledButton.styleFrom(backgroundColor: AppColors.destructive),
+              onPressed: confirmController.text == confirmPhrase ? () => Navigator.pop(context, true) : null,
+              child: const Text('Continue'),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (confirmed != true || !mounted) return;
+    await _showPasswordReauthAndWipe();
+  }
+
+  Future<void> _showPasswordReauthAndWipe() async {
+    final passwordController = TextEditingController();
+    String? error;
+    var submitting = false;
+
+    final reauthed = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Confirm Your Password'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              TextField(
+                controller: passwordController,
+                autofocus: true,
+                obscureText: true,
+                decoration: const InputDecoration(labelText: 'Password'),
+                onSubmitted: (_) {},
+              ),
+              if (error != null) ...[
+                const SizedBox(height: AppSpacing.sm),
+                Text(error!, style: const TextStyle(color: AppColors.destructive)),
+              ],
+            ],
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+            FilledButton(
+              style: FilledButton.styleFrom(backgroundColor: AppColors.destructive),
+              onPressed: submitting
+                  ? null
+                  : () async {
+                      final user = FirebaseAuth.instance.currentUser;
+                      if (user?.email == null) return;
+                      setDialogState(() => submitting = true);
+                      try {
+                        await user!.reauthenticateWithCredential(
+                          EmailAuthProvider.credential(email: user.email!, password: passwordController.text),
+                        );
+                        if (context.mounted) Navigator.pop(context, true);
+                      } on FirebaseAuthException catch (e) {
+                        setDialogState(() {
+                          error = e.message ?? e.code;
+                          submitting = false;
+                        });
+                      }
+                    },
+              child: submitting
+                  ? const SizedBox(height: 16, width: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                  : const Text('Wipe Everything'),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (reauthed != true || !mounted) return;
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Wiping all data...')));
+    }
+    try {
+      final wipeService = await ref.read(dataWipeServiceProvider.future);
+      await wipeService.wipeEverything();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Wipe failed: $e')));
+      }
+      return;
+    }
+    // Local data (and this user's own grants) are gone — sign out so
+    // AuthGate/LoginScreen reloads from scratch rather than leaving the
+    // shell rendered against a database that no longer matches it.
+    await FirebaseAuth.instance.signOut();
+  }
+
   static const _typeLabels = {
     BusinessType.sparePartsShop: 'Spare Parts Shop',
     BusinessType.fishery: 'Fishery',
@@ -585,6 +716,17 @@ class _AppShellState extends ConsumerState<AppShell>
               ),
             ),
             groups: groups,
+            dangerZone: isSuperAdmin
+                ? Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm, vertical: AppSpacing.xs),
+                    child: TextButton.icon(
+                      onPressed: _showWipeDataDialog,
+                      icon: const Icon(Icons.delete_forever_outlined, size: 18, color: AppColors.destructive),
+                      label: const Text('Wipe All Data', style: TextStyle(color: AppColors.destructive)),
+                      style: TextButton.styleFrom(alignment: Alignment.centerLeft),
+                    ),
+                  )
+                : null,
             footer: InkWell(
               onTap: () => _showBusinessMenu(context),
               child: Padding(

@@ -46,6 +46,7 @@ import '../../features/transport/driver_performance_service.dart';
 import '../../features/transport/trip_income_repository.dart';
 import '../../features/transport/vehicle_profitability_service.dart';
 import 'audit_log_repository.dart';
+import 'data_wipe_service.dart';
 import 'database.dart';
 import 'number_sequence_service.dart';
 
@@ -141,6 +142,12 @@ final firestoreProvider = Provider<FirebaseFirestore>((ref) => FirebaseFirestore
 
 final fcmServiceProvider = Provider<FcmService>((ref) {
   return FcmService(FirebaseMessaging.instance, ref.watch(firestoreProvider));
+});
+
+final dataWipeServiceProvider = FutureProvider<DataWipeService>((ref) async {
+  final db = await ref.watch(databaseProvider.future);
+  final firestore = ref.watch(firestoreProvider);
+  return DataWipeService(db, firestore);
 });
 
 final userProfileRepositoryProvider = Provider<UserProfileRepository>((ref) {

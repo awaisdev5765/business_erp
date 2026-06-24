@@ -54,8 +54,6 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
     }
   }
 
-  /// Pick an existing category or type a new name to create one on the
-  /// fly — same pattern as TripDetailScreen's fish-category picker.
   /// One category per line, e.g. pasted straight from a spreadsheet or
   /// typed out from memory while setting up a shop's catalog — much
   /// faster than the one-at-a-time "New Product" dialog's picker for
@@ -103,6 +101,110 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
     }
   }
 
+  /// One product per line: `SKU, Name, Cost, Price[, Stock]` — for
+  /// onboarding a shop with an existing catalog (pasted from a
+  /// spreadsheet) instead of the one-at-a-time "New Product" dialog.
+  /// A picked category applies to every line in this batch; per-line
+  /// category selection would need a richer paste format than a plain
+  /// comma list, which isn't worth the complexity for what's meant to
+  /// be a quick bulk-entry shortcut. Lines with the wrong number of
+  /// fields, a non-numeric cost/price, or a SKU that already exists are
+  /// skipped rather than aborting the whole batch.
+  Future<void> _showBulkAddProductsDialog() async {
+    final linesController = TextEditingController();
+    Category? category;
+
+    final saved = await showDialog<bool>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Bulk Add Products'),
+          content: SizedBox(
+            width: 420,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                OutlinedButton.icon(
+                  onPressed: () async {
+                    final picked = await _pickOrCreateCategory();
+                    setDialogState(() => category = picked);
+                  },
+                  icon: const Icon(Icons.sell_outlined, size: 16),
+                  label: Text(category?.name ?? 'Category for all (optional)'),
+                ),
+                const SizedBox(height: AppSpacing.md),
+                TextField(
+                  controller: linesController,
+                  autofocus: true,
+                  maxLines: 10,
+                  decoration: const InputDecoration(
+                    labelText: 'One product per line: SKU, Name, Cost, Price[, Stock]',
+                    hintText: 'BRK-001, Brake Pad XL, 10.00, 15.00, 20\nOIL-002, Engine Oil 1L, 5.00, 8.50',
+                    alignLabelWithHint: true,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+            FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Add All')),
+          ],
+        ),
+      ),
+    );
+
+    if (saved != true) return;
+    final lines = linesController.text.split('\n').where((l) => l.trim().isNotEmpty).toList();
+    if (lines.isEmpty) return;
+
+    final businessId = await ref.read(currentBusinessIdProvider.future);
+    final repo = await ref.read(productRepositoryProvider.future);
+    final existingSkus = (_products ?? const []).map((p) => p.sku.toLowerCase()).toSet();
+
+    var added = 0;
+    var skipped = 0;
+    for (final line in lines) {
+      final fields = line.split(',').map((f) => f.trim()).toList();
+      if (fields.length < 4) {
+        skipped++;
+        continue;
+      }
+      final sku = fields[0];
+      final name = fields[1];
+      final cost = double.tryParse(fields[2]);
+      final price = double.tryParse(fields[3]);
+      final stock = fields.length > 4 ? int.tryParse(fields[4]) ?? 0 : 0;
+      if (sku.isEmpty || name.isEmpty || cost == null || price == null || existingSkus.contains(sku.toLowerCase())) {
+        skipped++;
+        continue;
+      }
+
+      await repo.create(
+        businessId: businessId,
+        sku: sku,
+        name: name,
+        categoryUuid: category?.uuid,
+        costPriceMinorUnits: (cost * 100).round(),
+        salePriceMinorUnits: (price * 100).round(),
+        openingStock: stock,
+        createdBy: currentUser,
+      );
+      existingSkus.add(sku.toLowerCase());
+      added++;
+    }
+
+    await _load();
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Added $added product(s)${skipped > 0 ? ', skipped $skipped (bad format or duplicate SKU)' : ''}')),
+      );
+    }
+  }
+
+  /// Pick an existing category or type a new name to create one on the
+  /// fly — same pattern as TripDetailScreen's fish-category picker.
   Future<Category?> _pickOrCreateCategory() async {
     final businessId = await ref.read(currentBusinessIdProvider.future);
     final categoryRepo = await ref.read(categoryRepositoryProvider.future);
@@ -335,6 +437,11 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
       appBar: AppBar(
         title: const Text('Products'),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.upload_file_outlined),
+            tooltip: 'Bulk Add Products',
+            onPressed: _showBulkAddProductsDialog,
+          ),
           IconButton(
             icon: const Icon(Icons.playlist_add),
             tooltip: 'Bulk Add Categories',
