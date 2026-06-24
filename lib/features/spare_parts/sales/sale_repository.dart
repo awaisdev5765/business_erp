@@ -49,6 +49,7 @@ class SaleRepository {
     required String createdBy,
     required String deviceId,
     required List<SaleLineInput> lineInputs,
+    int discountMinorUnits = 0,
     DateTime? date,
   }) async {
     if (lineInputs.isEmpty) {
@@ -56,6 +57,9 @@ class SaleRepository {
     }
     if (paymentMethod == PaymentMethod.credit && customerUuid == null) {
       throw ArgumentError('Credit sales must be tied to a customer');
+    }
+    if (discountMinorUnits < 0) {
+      throw ArgumentError('Discount cannot be negative');
     }
 
     final documentNumber = await numbering.next(businessId: businessId, docType: DocType.sale);
@@ -84,10 +88,14 @@ class SaleRepository {
       ));
     }
 
+    final grandTotal = lines.fold<int>(0, (sum, l) => sum + l.lineTotalMinorUnits + l.lineTaxMinorUnits);
+    if (discountMinorUnits > grandTotal) {
+      throw ArgumentError('Discount cannot exceed the sale total');
+    }
+
     var requiresApproval = false;
     if (paymentMethod == PaymentMethod.credit && approvalThresholds != null) {
       final threshold = await approvalThresholds!.thresholdFor(businessId: businessId, transactionType: 'sale');
-      final grandTotal = lines.fold<int>(0, (sum, l) => sum + l.lineTotalMinorUnits + l.lineTaxMinorUnits);
       requiresApproval = threshold != null && grandTotal > threshold;
     }
 
@@ -102,6 +110,7 @@ class SaleRepository {
       createdBy: createdBy,
       createdAt: DateTime.now(),
       lines: lines,
+      discountMinorUnits: discountMinorUnits,
     );
 
     await db.transaction((txn) async {
@@ -198,7 +207,8 @@ class SaleRepository {
     final totalMinorUnits = sale.totalMinorUnits;
     final totalCostMinorUnits = sale.totalCostMinorUnits;
     final totalTaxMinorUnits = sale.totalTaxMinorUnits;
-    final grandTotalMinorUnits = sale.grandTotalMinorUnits;
+    final netAmountDueMinorUnits = sale.netAmountDueMinorUnits;
+    final discountMinorUnits = sale.discountMinorUnits;
 
     await ledger.postWithin(
       txn,
@@ -213,14 +223,17 @@ class SaleRepository {
         JournalLine(
           entryUuid: '',
           accountCode: sale.paymentMethod == PaymentMethod.cash ? '1010' : '1030',
-          // Customer pays/owes the tax-inclusive amount.
-          debitMinorUnits: grandTotalMinorUnits,
+          // Customer pays/owes the tax-inclusive amount, net of any
+          // discount — the discount itself is its own line below
+          // rather than netted out of Sales Income, so gross revenue
+          // stays visible.
+          debitMinorUnits: netAmountDueMinorUnits,
           creditMinorUnits: 0,
           partyUuid: sale.paymentMethod == PaymentMethod.credit ? sale.customerUuid : null,
         ),
         JournalLine(
           entryUuid: '',
-          accountCode: '4010', // Sales Income (tax-exclusive)
+          accountCode: '4010', // Sales Income (tax-exclusive, gross)
           debitMinorUnits: 0,
           creditMinorUnits: totalMinorUnits,
         ),
@@ -230,6 +243,13 @@ class SaleRepository {
             accountCode: '2020', // Tax Payable — output tax collected
             debitMinorUnits: 0,
             creditMinorUnits: totalTaxMinorUnits,
+          ),
+        if (discountMinorUnits > 0)
+          JournalLine(
+            entryUuid: '',
+            accountCode: '5110', // Discount Allowed
+            debitMinorUnits: discountMinorUnits,
+            creditMinorUnits: 0,
           ),
         JournalLine(
           entryUuid: '',

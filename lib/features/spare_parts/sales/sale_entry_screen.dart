@@ -48,6 +48,8 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
   Party? _selectedCustomer;
   bool _submitting = false;
   String? _currency;
+  final _discountController = TextEditingController();
+  int get _discount => ((double.tryParse(_discountController.text) ?? 0) * 100).round().clamp(0, _total);
 
   @override
   void initState() {
@@ -62,6 +64,7 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
   @override
   void dispose() {
     _searchController.dispose();
+    _discountController.dispose();
     super.dispose();
   }
 
@@ -178,6 +181,7 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
                 businessName: business.name,
                 customer: customer,
                 productsByUuid: productsByUuid,
+                currencyCode: business.baseCurrency,
               ),
             ),
           ],
@@ -208,6 +212,7 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
         paymentMethod: _paymentMethod,
         createdBy: currentUser,
         deviceId: currentDeviceId,
+        discountMinorUnits: _discount,
         lineInputs: _cart
             .map(
               (l) => SaleLineInput(
@@ -227,6 +232,7 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
           _cart.clear();
           _selectedCustomer = null;
           _paymentMethod = PaymentMethod.cash;
+          _discountController.clear();
         });
         await _showPrintDialog(sale: sale, customer: savedCustomer, productsByUuid: productsByUuid);
       }
@@ -521,6 +527,13 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
                   ],
                   onChanged: (v) => setState(() => _selectedCustomer = v),
                 ),
+                const SizedBox(height: AppSpacing.md),
+                TextField(
+                  controller: _discountController,
+                  decoration: const InputDecoration(labelText: 'Discount amount (optional)', prefixIcon: Icon(Icons.discount_outlined)),
+                  keyboardType: TextInputType.number,
+                  onChanged: (_) => setState(() {}),
+                ),
                 const SizedBox(height: AppSpacing.lg),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -532,6 +545,24 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
                     Text('$_itemCount'),
                   ],
                 ),
+                if (_discount > 0) ...[
+                  const SizedBox(height: AppSpacing.sm),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text('Subtotal', style: TextStyle(color: Colors.grey.shade600)),
+                      Text(formatMoney(_total, _currency)),
+                    ],
+                  ),
+                  const SizedBox(height: AppSpacing.xs),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text('Discount', style: TextStyle(color: Colors.grey.shade600)),
+                      Text('- ${formatMoney(_discount, _currency)}', style: const TextStyle(color: AppColors.destructive)),
+                    ],
+                  ),
+                ],
                 const SizedBox(height: AppSpacing.sm),
                 const Divider(),
                 const SizedBox(height: AppSpacing.sm),
@@ -546,7 +577,7 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
                       ),
                     ),
                     Text(
-                      formatMoney(_total, _currency),
+                      formatMoney(_total - _discount, _currency),
                       style: Theme.of(context).textTheme.headlineSmall
                           ?.copyWith(fontWeight: FontWeight.w700),
                     ),

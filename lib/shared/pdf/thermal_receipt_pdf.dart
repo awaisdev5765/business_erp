@@ -86,10 +86,13 @@ class ThermalReceiptPdf {
             ],
             _dashedDivider(),
             pw.SizedBox(height: 4),
-            if (sale.totalTaxMinorUnits > 0) _row('Subtotal', _money(sale.totalMinorUnits, currencyCode), normalStyle, normalStyle),
+            if (sale.totalTaxMinorUnits > 0 || sale.discountMinorUnits > 0)
+              _row('Subtotal', _money(sale.totalMinorUnits, currencyCode), normalStyle, normalStyle),
             if (sale.totalTaxMinorUnits > 0) _row('Tax', _money(sale.totalTaxMinorUnits, currencyCode), normalStyle, normalStyle),
+            if (sale.discountMinorUnits > 0)
+              _row('Discount', '-${_money(sale.discountMinorUnits, currencyCode)}', normalStyle, normalStyle),
             pw.SizedBox(height: 2),
-            _row('TOTAL', _money(sale.grandTotalMinorUnits, currencyCode), boldStyle, pw.TextStyle(fontSize: fontSize + 2, fontWeight: pw.FontWeight.bold)),
+            _row('TOTAL', _money(sale.netAmountDueMinorUnits, currencyCode), boldStyle, pw.TextStyle(fontSize: fontSize + 2, fontWeight: pw.FontWeight.bold)),
             pw.SizedBox(height: 10),
             pw.Text('Thank you!', style: normalStyle),
           ],

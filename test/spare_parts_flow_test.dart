@@ -143,6 +143,63 @@ void main() {
     expect(cashBalance, 1500);
   });
 
+  test('a sale discount posts Discount Allowed and reduces what the customer owes, without touching gross revenue', () async {
+    final customer = await parties.create(businessId: businessId, type: PartyType.customer, name: 'Walk-in Customer');
+    final product = await products.create(
+      businessId: businessId,
+      sku: 'BRK-005',
+      name: 'Air Filter',
+      costPriceMinorUnits: 500,
+      salePriceMinorUnits: 1000,
+      openingStock: 5,
+    );
+
+    await sales.create(
+      businessId: businessId,
+      customerUuid: customer.uuid,
+      paymentMethod: PaymentMethod.credit,
+      createdBy: user,
+      deviceId: deviceId,
+      discountMinorUnits: 200,
+      lineInputs: [SaleLineInput(productUuid: product.uuid, quantity: 2, unitPriceMinorUnits: 1000)],
+    );
+
+    // Gross revenue stays at the full 2000 — the discount is its own
+    // line, not netted out of Sales Income.
+    final salesIncome = await ledger.accountBalanceMinorUnits(businessId: businessId, accountCode: '4010');
+    expect(salesIncome, -2000);
+
+    final discountAllowed = await ledger.accountBalanceMinorUnits(businessId: businessId, accountCode: '5110');
+    expect(discountAllowed, 200);
+
+    // Customer owes the discounted amount, not the gross total.
+    final customerReceivable = await parties.outstandingBalanceMinorUnits(customer.uuid);
+    expect(customerReceivable, 1800);
+  });
+
+  test('a discount larger than the sale total is rejected', () async {
+    final product = await products.create(
+      businessId: businessId,
+      sku: 'BRK-006',
+      name: 'Wiper Blade',
+      costPriceMinorUnits: 200,
+      salePriceMinorUnits: 500,
+      openingStock: 5,
+    );
+
+    expect(
+      () => sales.create(
+        businessId: businessId,
+        paymentMethod: PaymentMethod.cash,
+        createdBy: user,
+        deviceId: deviceId,
+        discountMinorUnits: 600,
+        lineInputs: [SaleLineInput(productUuid: product.uuid, quantity: 1, unitPriceMinorUnits: 500)],
+      ),
+      throwsArgumentError,
+    );
+  });
+
   test('returning a sale restores stock and reverses the original entry', () async {
     final customer = await parties.create(businessId: businessId, type: PartyType.customer, name: 'Walk-in Customer');
     final supplier = await parties.create(businessId: businessId, type: PartyType.supplier, name: 'Acme Parts Co');

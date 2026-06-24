@@ -88,6 +88,7 @@ class Sale {
     required this.createdBy,
     required this.createdAt,
     this.lines = const [],
+    this.discountMinorUnits = 0,
   });
 
   final String uuid;
@@ -103,10 +104,21 @@ class Sale {
   final DateTime createdAt;
   final List<SaleLine> lines;
 
+  /// Whole-sale flat discount, applied at checkout — posted as Dr
+  /// "Discount Allowed" (5110), an expense, rather than netted straight
+  /// out of Sales Income, so gross revenue and the discount given stay
+  /// separately visible in the books (see SaleRepository._postSale()).
+  final int discountMinorUnits;
+
   int get totalMinorUnits => lines.fold(0, (sum, l) => sum + l.lineTotalMinorUnits);
   int get totalCostMinorUnits => lines.fold(0, (sum, l) => sum + l.lineCostMinorUnits);
   int get totalTaxMinorUnits => lines.fold(0, (sum, l) => sum + l.lineTaxMinorUnits);
+
+  /// Gross total before discount — tax-inclusive subtotal.
   int get grandTotalMinorUnits => totalMinorUnits + totalTaxMinorUnits;
+
+  /// What the customer actually pays/owes — grandTotal minus discount.
+  int get netAmountDueMinorUnits => grandTotalMinorUnits - discountMinorUnits;
 
   static const tableName = 'sales';
 
@@ -120,7 +132,8 @@ class Sale {
       date TEXT NOT NULL,
       status TEXT NOT NULL,
       created_by TEXT NOT NULL,
-      created_at TEXT NOT NULL
+      created_at TEXT NOT NULL,
+      discount_minor_units INTEGER NOT NULL DEFAULT 0
     )
   ''';
 
@@ -136,6 +149,7 @@ class Sale {
         'status': status.name,
         'created_by': createdBy,
         'created_at': createdAt.toIso8601String(),
+        'discount_minor_units': discountMinorUnits,
       };
 
   factory Sale.fromMap(Map<String, Object?> map, {List<SaleLine> lines = const []}) => Sale(
@@ -149,5 +163,6 @@ class Sale {
         createdBy: map['created_by'] as String,
         createdAt: DateTime.parse(map['created_at'] as String),
         lines: lines,
+        discountMinorUnits: map['discount_minor_units'] as int? ?? 0,
       );
 }

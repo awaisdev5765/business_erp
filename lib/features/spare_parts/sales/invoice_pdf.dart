@@ -3,6 +3,7 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 
 import '../../../core/party/party.dart';
+import '../../../shared/currency/currency.dart';
 import '../inventory/product.dart';
 import 'sale.dart';
 
@@ -17,6 +18,7 @@ class InvoicePdf {
     required String businessName,
     Party? customer,
     required Map<String, Product> productsByUuid,
+    String? currencyCode,
   }) async {
     final doc = pw.Document();
 
@@ -56,8 +58,8 @@ class InvoicePdf {
                     children: [
                       _cell(productsByUuid[line.productUuid]?.name ?? line.productUuid),
                       _cell('${line.quantity}'),
-                      _cell(_money(line.unitPriceMinorUnits)),
-                      _cell(_money(line.lineTotalMinorUnits)),
+                      _cell(_money(line.unitPriceMinorUnits, currencyCode)),
+                      _cell(_money(line.lineTotalMinorUnits, currencyCode)),
                     ],
                   ),
               ],
@@ -65,9 +67,18 @@ class InvoicePdf {
             pw.SizedBox(height: 12),
             pw.Align(
               alignment: pw.Alignment.centerRight,
-              child: pw.Text(
-                'Total: ${_money(sale.totalMinorUnits)}',
-                style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold),
+              child: pw.Column(
+                crossAxisAlignment: pw.CrossAxisAlignment.end,
+                children: [
+                  pw.Text('Subtotal: ${_money(sale.totalMinorUnits, currencyCode)}'),
+                  if (sale.totalTaxMinorUnits > 0) pw.Text('Tax: ${_money(sale.totalTaxMinorUnits, currencyCode)}'),
+                  if (sale.discountMinorUnits > 0) pw.Text('Discount: -${_money(sale.discountMinorUnits, currencyCode)}'),
+                  pw.SizedBox(height: 4),
+                  pw.Text(
+                    'Total: ${_money(sale.netAmountDueMinorUnits, currencyCode)}',
+                    style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold),
+                  ),
+                ],
               ),
             ),
           ],
@@ -84,7 +95,7 @@ class InvoicePdf {
       );
 }
 
-String _money(int minorUnits) => (minorUnits / 100).toStringAsFixed(2);
+String _money(int minorUnits, String? currencyCode) => formatMoney(minorUnits, currencyCode);
 
 String _formatDate(DateTime date) =>
     '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';

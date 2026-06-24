@@ -56,6 +56,53 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
 
   /// Pick an existing category or type a new name to create one on the
   /// fly — same pattern as TripDetailScreen's fish-category picker.
+  /// One category per line, e.g. pasted straight from a spreadsheet or
+  /// typed out from memory while setting up a shop's catalog — much
+  /// faster than the one-at-a-time "New Product" dialog's picker for
+  /// a business with a real existing category list.
+  Future<void> _showBulkAddCategoriesDialog() async {
+    final namesController = TextEditingController();
+
+    final saved = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Bulk Add Categories'),
+        content: SizedBox(
+          width: 360,
+          child: TextField(
+            controller: namesController,
+            autofocus: true,
+            maxLines: 8,
+            decoration: const InputDecoration(
+              labelText: 'One category per line',
+              hintText: 'Engine Parts\nBrakes\nElectrical\n...',
+              alignLabelWithHint: true,
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Add All')),
+        ],
+      ),
+    );
+
+    if (saved != true) return;
+    final names = namesController.text.split('\n');
+    if (names.every((n) => n.trim().isEmpty)) return;
+
+    final businessId = await ref.read(currentBusinessIdProvider.future);
+    final categoryRepo = await ref.read(categoryRepositoryProvider.future);
+    final created = await categoryRepo.createMany(businessId: businessId, names: names);
+    await _load();
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Added ${created.length} new categor${created.length == 1 ? 'y' : 'ies'}')),
+      );
+    }
+  }
+
   Future<Category?> _pickOrCreateCategory() async {
     final businessId = await ref.read(currentBusinessIdProvider.future);
     final categoryRepo = await ref.read(categoryRepositoryProvider.future);
@@ -285,7 +332,16 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
     }).toList();
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Products')),
+      appBar: AppBar(
+        title: const Text('Products'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.playlist_add),
+            tooltip: 'Bulk Add Categories',
+            onPressed: _showBulkAddCategoriesDialog,
+          ),
+        ],
+      ),
       floatingActionButton: FloatingActionButton(
         onPressed: _showAddDialog,
         tooltip: 'New Product',

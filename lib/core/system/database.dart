@@ -18,6 +18,7 @@ import '../accounting/account.dart';
 import '../accounting/approval_threshold.dart';
 import '../accounting/balance_rollup.dart';
 import '../accounting/bank_account.dart';
+import '../accounting/expense.dart';
 import '../accounting/fiscal_period.dart';
 import '../accounting/fixed_asset.dart';
 import '../accounting/journal_entry.dart';
@@ -91,19 +92,25 @@ class AppDatabase {
 /// database always gets the latest shape directly via [createSchema];
 /// migrations only run for a database that already existed at a lower
 /// version (i.e. real installs with real data, not fresh ones).
-const _schemaVersion = 2;
+const _schemaVersion = 3;
 
-/// v1 -> v2: added Business.address/phone and Payment.method/note —
-/// see PHASES.md's post-launch "Business profile + currency, payment
-/// transparency" work. SQLite's ALTER TABLE only supports adding one
-/// column at a time with a constant DEFAULT (no backfill logic needed
-/// here — every existing row just gets the column's default).
+/// v1 -> v2: added Business.address/phone and Payment.method/note.
+/// v2 -> v3: added Sale.discount_minor_units and the new Expense table
+/// — see PHASES.md's post-launch "discount + general expense flow"
+/// work. SQLite's ALTER TABLE only supports adding one column at a
+/// time with a constant DEFAULT (no backfill logic needed here — every
+/// existing row just gets the column's default).
 Future<void> migrateSchema(DatabaseExecutor db, int oldVersion, int newVersion) async {
   if (oldVersion < 2) {
     await db.execute('ALTER TABLE ${Business.tableName} ADD COLUMN address TEXT');
     await db.execute('ALTER TABLE ${Business.tableName} ADD COLUMN phone TEXT');
     await db.execute("ALTER TABLE ${Payment.tableName} ADD COLUMN method TEXT NOT NULL DEFAULT 'cash'");
     await db.execute('ALTER TABLE ${Payment.tableName} ADD COLUMN note TEXT');
+  }
+  if (oldVersion < 3) {
+    await db.execute('ALTER TABLE ${Sale.tableName} ADD COLUMN discount_minor_units INTEGER NOT NULL DEFAULT 0');
+    await db.execute(Expense.createTableSql);
+    await db.execute(Expense.createIndexSql);
   }
 }
 
@@ -179,4 +186,6 @@ Future<void> createSchema(DatabaseExecutor db) async {
   await db.execute(SalaryPayment.createIndexSql);
   await db.execute(AccountBalanceRollup.createTableSql);
   await db.execute(PartyBalanceRollup.createTableSql);
+  await db.execute(Expense.createTableSql);
+  await db.execute(Expense.createIndexSql);
 }

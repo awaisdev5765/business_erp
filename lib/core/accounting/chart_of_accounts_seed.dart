@@ -32,6 +32,9 @@ const List<(String, String, AccountType)> _seedAccounts = [
   ('5080', 'Oil Change Expense', AccountType.expense),
   ('5090', 'Depreciation Expense', AccountType.expense),
   ('5100', 'Salary Expense', AccountType.expense),
+  ('5110', 'Discount Allowed', AccountType.expense),
+  ('5120', 'Rent Expense', AccountType.expense),
+  ('5130', 'Utilities Expense', AccountType.expense),
 ];
 
 /// Idempotent: inserts any seed account that doesn't already exist for
