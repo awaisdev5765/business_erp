@@ -9,6 +9,7 @@ import 'core/activity/trip.dart';
 import 'core/asset/operating_asset.dart';
 import 'core/identity/auth_gate.dart';
 import 'core/identity/user_profile.dart';
+import 'core/notifications/notification_item.dart';
 import 'core/party/party.dart';
 import 'core/party/party_list_screen.dart';
 import 'core/system/providers.dart';
@@ -567,6 +568,12 @@ class _AppShellState extends ConsumerState<AppShell>
                       ),
                     ),
                   ),
+                  _NotificationBell(
+                    onNavigate: (label) {
+                      final index = destinations.indexWhere((d) => d.label == label);
+                      if (index != -1) setState(() => _selectedIndex = index);
+                    },
+                  ),
                 ],
               ),
             ),
@@ -621,5 +628,81 @@ class _AppShellState extends ConsumerState<AppShell>
         ],
       ),
     );
+  }
+}
+
+/// Bell icon + unread-style badge in the sidebar header — the in-app
+/// alternative to push notifications (FCM tokens are registered but
+/// nothing ever sends through them without Cloud Functions). Tapping it
+/// opens a dialog of everything `notificationCenterProvider` computed
+/// (low stock, pending approvals, sync failures, conflicts); tapping an
+/// item jumps to the relevant nav section via [onNavigate].
+class _NotificationBell extends ConsumerWidget {
+  const _NotificationBell({required this.onNavigate});
+
+  final void Function(String label) onNavigate;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final notifications = ref.watch(notificationCenterProvider).value ?? const [];
+
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        IconButton(
+          icon: const Icon(Icons.notifications_outlined, size: 20),
+          tooltip: 'Notifications',
+          onPressed: () => _showNotifications(context, notifications),
+        ),
+        if (notifications.isNotEmpty)
+          Positioned(
+            top: 6,
+            right: 6,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+              decoration: BoxDecoration(color: AppColors.destructive, borderRadius: BorderRadius.circular(8)),
+              constraints: const BoxConstraints(minWidth: 16),
+              child: Text(
+                '${notifications.length}',
+                textAlign: TextAlign.center,
+                style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w700),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
+  Future<void> _showNotifications(BuildContext context, List<NotificationItem> notifications) async {
+    final label = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Notifications'),
+        content: SizedBox(
+          width: 360,
+          child: notifications.isEmpty
+              ? const Padding(
+                  padding: EdgeInsets.symmetric(vertical: AppSpacing.lg),
+                  child: Text("You're all caught up."),
+                )
+              : Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: notifications
+                      .map((n) => ListTile(
+                            contentPadding: EdgeInsets.zero,
+                            leading: Icon(n.icon, color: n.color),
+                            title: Text(n.title, style: const TextStyle(fontWeight: FontWeight.w600)),
+                            subtitle: Text(n.subtitle, maxLines: 2, overflow: TextOverflow.ellipsis),
+                            onTap: () => Navigator.pop(context, n.navIndexHint),
+                          ))
+                      .toList(),
+                ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Close')),
+        ],
+      ),
+    );
+    if (label != null) onNavigate(label);
   }
 }

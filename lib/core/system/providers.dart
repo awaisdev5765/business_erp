@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:sqflite/sqflite.dart';
 
@@ -19,12 +20,15 @@ import '../asset/operating_asset_repository.dart';
 import '../identity/user_profile.dart';
 import '../identity/user_profile_repository.dart';
 import '../notifications/fcm_service.dart';
+import '../notifications/notification_item.dart';
 import '../party/party_repository.dart';
 import '../sync/conflict_record_repository.dart';
 import '../sync/firestore_sync_service.dart';
+import '../sync/sync_queue_item.dart';
 import '../sync/sync_queue_repository.dart';
 import '../tenant/business.dart';
 import '../tenant/business_repository.dart';
+import '../../shared/theme/app_theme.dart';
 import '../transaction/payment_repository.dart';
 import '../transaction/salary_repository.dart';
 import '../../features/fishery/catch_repository.dart';
@@ -371,4 +375,68 @@ final driverPerformanceServiceProvider = FutureProvider<DriverPerformanceService
   final tripIncome = await ref.watch(tripIncomeRepositoryProvider.future);
   final tripExpenses = await ref.watch(tripExpenseRepositoryProvider.future);
   return DriverPerformanceService(tripIncome, tripExpenses);
+});
+
+// --- In-app notifications (see lib/core/notifications/notification_item.dart) ---
+
+final notificationCenterProvider = FutureProvider<List<NotificationItem>>((ref) async {
+  final businessId = await ref.watch(currentBusinessIdProvider.future);
+  final business = await ref.watch(currentBusinessProvider.future);
+  final isReadOnly = await ref.watch(isReadOnlyProvider.future);
+  final items = <NotificationItem>[];
+
+  if (business.type == BusinessType.sparePartsShop) {
+    final products = await ref.watch(productRepositoryProvider.future);
+    final lowStock = (await products.list(businessId: businessId)).where((p) => p.stockQuantity <= p.reorderLevel).toList();
+    if (lowStock.isNotEmpty) {
+      items.add(NotificationItem(
+        icon: Icons.inventory_2_outlined,
+        color: AppColors.destructive,
+        title: '${lowStock.length} product(s) low on stock',
+        subtitle: lowStock.take(3).map((p) => p.name).join(', ') + (lowStock.length > 3 ? '…' : ''),
+        navIndexHint: 'Products',
+      ));
+    }
+  }
+
+  if (!isReadOnly) {
+    final sales = await ref.watch(saleRepositoryProvider.future);
+    final pending = await sales.pendingApproval(businessId: businessId);
+    if (pending.isNotEmpty) {
+      items.add(NotificationItem(
+        icon: Icons.hourglass_top,
+        color: AppColors.warning,
+        title: '${pending.length} sale(s) waiting on approval',
+        subtitle: pending.take(3).map((s) => s.documentNumber).join(', ') + (pending.length > 3 ? '…' : ''),
+        navIndexHint: 'Approvals',
+      ));
+    }
+  }
+
+  final syncQueue = await ref.watch(syncQueueRepositoryProvider.future);
+  final queueItems = await syncQueue.all(businessId: businessId);
+  final failed = queueItems.where((i) => i.status == SyncQueueStatus.failed).length;
+  if (failed > 0) {
+    items.add(NotificationItem(
+      icon: Icons.error_outline,
+      color: AppColors.destructive,
+      title: '$failed item(s) failed to sync',
+      subtitle: 'Check Sync Status for details',
+      navIndexHint: 'Sync Status',
+    ));
+  }
+
+  final conflictRecords = await ref.watch(conflictRecordRepositoryProvider.future);
+  final conflicts = await conflictRecords.unresolved(businessId: businessId);
+  if (conflicts.isNotEmpty) {
+    items.add(NotificationItem(
+      icon: Icons.warning_amber,
+      color: AppColors.accent,
+      title: '${conflicts.length} sync conflict(s) need a decision',
+      subtitle: 'Check Sync Status for details',
+      navIndexHint: 'Sync Status',
+    ));
+  }
+
+  return items;
 });
