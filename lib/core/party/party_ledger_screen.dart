@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../shared/currency/currency.dart';
+import '../../shared/theme/app_theme.dart';
 import '../accounting/journal_entry.dart';
 import '../system/providers.dart';
 import '../transaction/payment.dart';
@@ -36,22 +38,46 @@ class _PartyLedgerScreenState extends ConsumerState<PartyLedgerScreen> {
 
   Future<void> _showRecordPaymentDialog() async {
     final amountController = TextEditingController();
+    final noteController = TextEditingController();
     final isCustomer = widget.party.type == PartyType.customer;
+    var method = PaymentSettlementMethod.cash;
 
     final saved = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: Text(isCustomer ? 'Receive Payment' : 'Pay Supplier'),
-        content: TextField(
-          controller: amountController,
-          autofocus: true,
-          decoration: const InputDecoration(labelText: 'Amount'),
-          keyboardType: TextInputType.number,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: Text(isCustomer ? 'Receive Payment' : 'Pay Supplier'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              TextField(
+                controller: amountController,
+                autofocus: true,
+                decoration: const InputDecoration(labelText: 'Amount'),
+                keyboardType: TextInputType.number,
+              ),
+              const SizedBox(height: AppSpacing.md),
+              DropdownButtonFormField<PaymentSettlementMethod>(
+                initialValue: method,
+                decoration: const InputDecoration(labelText: 'Method'),
+                items: PaymentSettlementMethod.values
+                    .map((m) => DropdownMenuItem(value: m, child: Text(_methodLabel(m))))
+                    .toList(),
+                onChanged: (v) => setDialogState(() => method = v ?? PaymentSettlementMethod.cash),
+              ),
+              const SizedBox(height: AppSpacing.md),
+              TextField(
+                controller: noteController,
+                decoration: const InputDecoration(labelText: 'Reference / note (optional)'),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+            FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Save')),
+          ],
         ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Save')),
-        ],
       ),
     );
 
@@ -66,6 +92,8 @@ class _PartyLedgerScreenState extends ConsumerState<PartyLedgerScreen> {
       partyUuid: widget.party.uuid,
       direction: isCustomer ? PaymentDirection.receiveFromCustomer : PaymentDirection.payToSupplier,
       amountMinorUnits: amount,
+      method: method,
+      note: noteController.text.isEmpty ? null : noteController.text,
       createdBy: currentUser,
       deviceId: currentDeviceId,
     );
@@ -90,7 +118,7 @@ class _PartyLedgerScreenState extends ConsumerState<PartyLedgerScreen> {
               'recorded at all — for a transaction that happened but needs '
               'correcting, use a reversal instead.',
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: AppSpacing.md),
             TextField(
               controller: reasonController,
               autofocus: true,
@@ -101,7 +129,7 @@ class _PartyLedgerScreenState extends ConsumerState<PartyLedgerScreen> {
         actions: [
           TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
           FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            style: FilledButton.styleFrom(backgroundColor: Theme.of(context).colorScheme.error),
             onPressed: () => Navigator.pop(context, true),
             child: const Text('Void'),
           ),
@@ -134,6 +162,7 @@ class _PartyLedgerScreenState extends ConsumerState<PartyLedgerScreen> {
   @override
   Widget build(BuildContext context) {
     final statement = _statement;
+    final currency = ref.watch(currentCurrencyProvider).value;
     var runningBalance = 0;
 
     return Scaffold(
@@ -141,7 +170,7 @@ class _PartyLedgerScreenState extends ConsumerState<PartyLedgerScreen> {
         title: Text(widget.party.name),
         actions: [
           IconButton(
-            icon: const Icon(Icons.payments),
+            icon: const Icon(Icons.payments_outlined),
             tooltip: 'Record Payment',
             onPressed: _showRecordPaymentDialog,
           ),
@@ -150,9 +179,20 @@ class _PartyLedgerScreenState extends ConsumerState<PartyLedgerScreen> {
       body: statement == null
           ? const Center(child: CircularProgressIndicator())
           : statement.isEmpty
-              ? const Center(child: Text('No transactions yet'))
-              : ListView.builder(
+              ? Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.receipt_long_outlined, size: 40, color: Colors.grey.shade400),
+                      const SizedBox(height: AppSpacing.md),
+                      const Text('No transactions yet'),
+                    ],
+                  ),
+                )
+              : ListView.separated(
+                  padding: const EdgeInsets.all(AppSpacing.lg),
                   itemCount: statement.length,
+                  separatorBuilder: (_, _) => const SizedBox(height: AppSpacing.sm),
                   itemBuilder: (context, index) {
                     final row = statement[index];
                     final debit = row['debit_minor_units'] as int;
@@ -161,29 +201,57 @@ class _PartyLedgerScreenState extends ConsumerState<PartyLedgerScreen> {
                     final date = DateTime.parse(row['date'] as String);
                     final status = row['status'] as String;
                     final entryUuid = row['entry_uuid'] as String;
+                    final isPayment = row['source_type'] == 'Payment';
 
-                    return ListTile(
-                      title: Text('${row['source_type']} — ${row['description'] ?? row['source_id']}'),
-                      subtitle: Text('${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}  •  $status'),
-                      trailing: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.end,
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              if (debit > 0) Text('Dr ${_money(debit)}', style: const TextStyle(color: Colors.red)),
-                              if (credit > 0) Text('Cr ${_money(credit)}', style: const TextStyle(color: Colors.green)),
-                              Text('Bal: ${_money(runningBalance)}', style: const TextStyle(fontWeight: FontWeight.bold)),
-                            ],
+                    return Card(
+                      child: ListTile(
+                        contentPadding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg, vertical: AppSpacing.sm),
+                        leading: Container(
+                          width: 40,
+                          height: 40,
+                          decoration: BoxDecoration(
+                            color: (isPayment ? AppColors.success : AppColors.accent).withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(8),
                           ),
-                          if (status == JournalEntryStatus.posted.name)
-                            IconButton(
-                              icon: const Icon(Icons.block, size: 18),
-                              tooltip: 'Void this transaction',
-                              onPressed: () => _showVoidDialog(entryUuid),
+                          child: Icon(
+                            isPayment ? Icons.payments_outlined : Icons.receipt_long_outlined,
+                            color: isPayment ? AppColors.success : AppColors.accent,
+                            size: 18,
+                          ),
+                        ),
+                        title: Text('${row['source_type']} — ${row['description'] ?? row['source_id']}'),
+                        subtitle: Text('${_formatDate(date)}  •  $status'),
+                        trailing: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.end,
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                if (debit > 0)
+                                  Text(
+                                    'Dr ${formatMoney(debit, currency)}',
+                                    style: const TextStyle(color: AppColors.destructive, fontWeight: FontWeight.w600),
+                                  ),
+                                if (credit > 0)
+                                  Text(
+                                    'Cr ${formatMoney(credit, currency)}',
+                                    style: const TextStyle(color: AppColors.success, fontWeight: FontWeight.w600),
+                                  ),
+                                Text(
+                                  'Bal: ${formatMoney(runningBalance, currency)}',
+                                  style: TextStyle(fontWeight: FontWeight.w700, color: Colors.grey.shade700),
+                                ),
+                              ],
                             ),
-                        ],
+                            if (status == JournalEntryStatus.posted.name)
+                              IconButton(
+                                icon: const Icon(Icons.block, size: 18),
+                                tooltip: 'Void this transaction',
+                                onPressed: () => _showVoidDialog(entryUuid),
+                              ),
+                          ],
+                        ),
                       ),
                     );
                   },
@@ -192,4 +260,20 @@ class _PartyLedgerScreenState extends ConsumerState<PartyLedgerScreen> {
   }
 }
 
-String _money(int minorUnits) => (minorUnits / 100).toStringAsFixed(2);
+String _methodLabel(PaymentSettlementMethod method) {
+  switch (method) {
+    case PaymentSettlementMethod.cash:
+      return 'Cash';
+    case PaymentSettlementMethod.bankTransfer:
+      return 'Bank Transfer';
+    case PaymentSettlementMethod.cheque:
+      return 'Cheque';
+    case PaymentSettlementMethod.card:
+      return 'Card';
+    case PaymentSettlementMethod.other:
+      return 'Other';
+  }
+}
+
+String _formatDate(DateTime date) =>
+    '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';

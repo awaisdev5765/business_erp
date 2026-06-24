@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/party/party.dart';
 import '../../../core/system/providers.dart';
+import '../../../shared/currency/currency.dart';
 import '../../../shared/theme/app_theme.dart';
 import '../../../shared/widgets/quantity_stepper.dart';
 import '../../../shared/widgets/read_only_banner.dart';
@@ -42,6 +43,7 @@ class _PurchaseEntryScreenState extends ConsumerState<PurchaseEntryScreen> {
   List<Party> _suppliers = [];
   Party? _selectedSupplier;
   bool _submitting = false;
+  String? _currency;
 
   @override
   void initState() {
@@ -64,6 +66,7 @@ class _PurchaseEntryScreenState extends ConsumerState<PurchaseEntryScreen> {
     final partyRepo = await ref.read(partyRepositoryProvider.future);
     final productRepo = await ref.read(productRepositoryProvider.future);
     final categoryRepo = await ref.read(categoryRepositoryProvider.future);
+    final business = await ref.read(currentBusinessProvider.future);
 
     final suppliers = await partyRepo.list(
       businessId: businessId,
@@ -77,6 +80,7 @@ class _PurchaseEntryScreenState extends ConsumerState<PurchaseEntryScreen> {
         _suppliers = suppliers;
         _allProducts = products;
         _categoriesByUuid = {for (final c in categories) c.uuid: c};
+        _currency = business.baseCurrency;
       });
     }
   }
@@ -278,6 +282,7 @@ class _PurchaseEntryScreenState extends ConsumerState<PurchaseEntryScreen> {
                         itemBuilder: (context, index) => _ProductTile(
                           product: products[index],
                           onTap: _addToCart,
+                          currency: _currency,
                         ),
                       );
                     },
@@ -355,7 +360,7 @@ class _PurchaseEntryScreenState extends ConsumerState<PurchaseEntryScreen> {
                                       ),
                                     ),
                                     Text(
-                                      '${_money(line.unitCostMinorUnits)} each',
+                                      '${formatMoney(line.unitCostMinorUnits, _currency)} each',
                                       style: TextStyle(
                                         color: Colors.grey.shade600,
                                         fontSize: 12,
@@ -377,7 +382,7 @@ class _PurchaseEntryScreenState extends ConsumerState<PurchaseEntryScreen> {
                               SizedBox(
                                 width: 72,
                                 child: Text(
-                                  _money(line.totalMinorUnits),
+                                  formatMoney(line.totalMinorUnits, _currency),
                                   textAlign: TextAlign.right,
                                   style: const TextStyle(
                                     fontWeight: FontWeight.w700,
@@ -436,7 +441,7 @@ class _PurchaseEntryScreenState extends ConsumerState<PurchaseEntryScreen> {
                       ),
                     ),
                     Text(
-                      _money(_total),
+                      formatMoney(_total, _currency),
                       style: Theme.of(context).textTheme.headlineSmall
                           ?.copyWith(fontWeight: FontWeight.w700),
                     ),
@@ -473,10 +478,11 @@ class _PurchaseEntryScreenState extends ConsumerState<PurchaseEntryScreen> {
 }
 
 class _ProductTile extends StatelessWidget {
-  const _ProductTile({required this.product, required this.onTap});
+  const _ProductTile({required this.product, required this.onTap, this.currency});
 
   final Product product;
   final void Function(Product) onTap;
+  final String? currency;
 
   @override
   Widget build(BuildContext context) {
@@ -511,7 +517,7 @@ class _ProductTile extends StatelessWidget {
               ),
               const SizedBox(height: AppSpacing.xs),
               Text(
-                'Cost: ${_money(product.costPriceMinorUnits)}',
+                'Cost: ${formatMoney(product.costPriceMinorUnits, currency)}',
                 style: const TextStyle(fontWeight: FontWeight.w700),
               ),
               const SizedBox(height: AppSpacing.xs),
@@ -526,5 +532,3 @@ class _ProductTile extends StatelessWidget {
     );
   }
 }
-
-String _money(int minorUnits) => (minorUnits / 100).toStringAsFixed(2);

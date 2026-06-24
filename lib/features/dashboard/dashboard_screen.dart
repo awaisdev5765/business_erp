@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/system/providers.dart';
+import '../../shared/currency/currency.dart';
 import '../../shared/theme/app_theme.dart';
 
 /// Income account codes shared across all three verticals — see
@@ -23,6 +24,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   int? _receivables;
   int? _payables;
   String? _businessName;
+  String? _currency;
   List<int>? _dailyRevenueLast14Days; // index 0 = 13 days ago, index 13 = today
 
   @override
@@ -62,6 +64,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
         _receivables = receivables;
         _payables = -payables; // stored as a credit balance, show as positive owed
         _businessName = business.name;
+        _currency = business.baseCurrency;
         _dailyRevenueLast14Days = dailyRevenue;
       });
     }
@@ -100,18 +103,21 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                     _StatCard(
                       label: 'Cash on Hand',
                       value: _cashBalance,
+                      currency: _currency,
                       icon: Icons.account_balance_wallet_outlined,
                       color: AppColors.accent,
                     ),
                     _StatCard(
                       label: 'Receivables (owed to you)',
                       value: _receivables,
+                      currency: _currency,
                       icon: Icons.call_received_outlined,
                       color: AppColors.success,
                     ),
                     _StatCard(
                       label: 'Payables (you owe)',
                       value: _payables,
+                      currency: _currency,
                       icon: Icons.call_made_outlined,
                       color: AppColors.warning,
                     ),
@@ -120,7 +126,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
               },
             ),
             const SizedBox(height: AppSpacing.xl),
-            _RevenueTrendCard(dailyRevenue: _dailyRevenueLast14Days),
+            _RevenueTrendCard(dailyRevenue: _dailyRevenueLast14Days, currency: _currency),
           ],
         ),
       ),
@@ -129,10 +135,11 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
 }
 
 class _StatCard extends StatelessWidget {
-  const _StatCard({required this.label, required this.value, required this.icon, required this.color});
+  const _StatCard({required this.label, required this.value, this.currency, required this.icon, required this.color});
 
   final String label;
   final int? value;
+  final String? currency;
   final IconData icon;
   final Color color;
 
@@ -164,7 +171,7 @@ class _StatCard extends StatelessWidget {
                   value == null
                       ? const SizedBox(height: 24, width: 24, child: CircularProgressIndicator(strokeWidth: 2))
                       : Text(
-                          (value! / 100).toStringAsFixed(2),
+                          formatMoney(value!, currency),
                           style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w700),
                         ),
                 ],
@@ -181,9 +188,10 @@ class _StatCard extends StatelessWidget {
 /// — the one trend chart the "Data-Dense Dashboard" style calls for that
 /// this app's KPI-cards-only Dashboard never had.
 class _RevenueTrendCard extends StatelessWidget {
-  const _RevenueTrendCard({required this.dailyRevenue});
+  const _RevenueTrendCard({required this.dailyRevenue, this.currency});
 
   final List<int>? dailyRevenue;
+  final String? currency;
 
   @override
   Widget build(BuildContext context) {
@@ -202,7 +210,7 @@ class _RevenueTrendCard extends StatelessWidget {
                   ? const Center(child: CircularProgressIndicator())
                   : data.every((v) => v == 0)
                       ? Center(child: Text('No revenue posted in the last 14 days', style: TextStyle(color: Colors.grey.shade600)))
-                      : _buildChart(context, data),
+                      : _buildChart(context, data, currency),
             ),
           ],
         ),
@@ -210,7 +218,7 @@ class _RevenueTrendCard extends StatelessWidget {
     );
   }
 
-  Widget _buildChart(BuildContext context, List<int> data) {
+  Widget _buildChart(BuildContext context, List<int> data, String? currency) {
     final maxValue = data.reduce((a, b) => a > b ? a : b).toDouble();
     final today = DateTime.now();
 
@@ -242,7 +250,7 @@ class _RevenueTrendCard extends StatelessWidget {
         barTouchData: BarTouchData(
           touchTooltipData: BarTouchTooltipData(
             getTooltipItem: (group, groupIndex, rod, rodIndex) =>
-                BarTooltipItem(_money(rod.toY.round()), const TextStyle(color: Colors.white, fontSize: 12)),
+                BarTooltipItem(formatMoney(rod.toY.round(), currency), const TextStyle(color: Colors.white, fontSize: 12)),
           ),
         ),
         barGroups: [
@@ -263,5 +271,3 @@ class _RevenueTrendCard extends StatelessWidget {
     );
   }
 }
-
-String _money(int minorUnits) => (minorUnits / 100).toStringAsFixed(2);

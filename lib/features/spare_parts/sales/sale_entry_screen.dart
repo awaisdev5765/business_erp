@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/party/party.dart';
 import '../../../core/system/providers.dart';
+import '../../../shared/currency/currency.dart';
 import '../../../shared/theme/app_theme.dart';
 import '../../../shared/widgets/quantity_stepper.dart';
 import '../../../shared/widgets/read_only_banner.dart';
@@ -46,6 +47,7 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
   Party? _selectedCustomer;
   bool _submitting = false;
   String _businessName = '';
+  String? _currency;
 
   @override
   void initState() {
@@ -83,6 +85,7 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
         _allProducts = products;
         _categoriesByUuid = {for (final c in categories) c.uuid: c};
         _businessName = business.name;
+        _currency = business.baseCurrency;
       });
     }
   }
@@ -312,6 +315,7 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
                         itemBuilder: (context, index) => _ProductTile(
                           product: products[index],
                           onTap: _addToCart,
+                          currency: _currency,
                         ),
                       );
                     },
@@ -389,7 +393,7 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
                                       ),
                                     ),
                                     Text(
-                                      '${_money(line.product.salePriceMinorUnits)} each',
+                                      '${formatMoney(line.product.salePriceMinorUnits, _currency)} each',
                                       style: TextStyle(
                                         color: Colors.grey.shade600,
                                         fontSize: 12,
@@ -411,7 +415,7 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
                               SizedBox(
                                 width: 72,
                                 child: Text(
-                                  _money(line.totalMinorUnits),
+                                  formatMoney(line.totalMinorUnits, _currency),
                                   textAlign: TextAlign.right,
                                   style: const TextStyle(
                                     fontWeight: FontWeight.w700,
@@ -487,7 +491,7 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
                       ),
                     ),
                     Text(
-                      _money(_total),
+                      formatMoney(_total, _currency),
                       style: Theme.of(context).textTheme.headlineSmall
                           ?.copyWith(fontWeight: FontWeight.w700),
                     ),
@@ -524,10 +528,11 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
 }
 
 class _ProductTile extends StatelessWidget {
-  const _ProductTile({required this.product, required this.onTap});
+  const _ProductTile({required this.product, required this.onTap, this.currency});
 
   final Product product;
   final void Function(Product) onTap;
+  final String? currency;
 
   @override
   Widget build(BuildContext context) {
@@ -566,7 +571,7 @@ class _ProductTile extends StatelessWidget {
               ),
               const SizedBox(height: AppSpacing.xs),
               Text(
-                _money(product.salePriceMinorUnits),
+                formatMoney(product.salePriceMinorUnits, currency),
                 style: const TextStyle(fontWeight: FontWeight.w700),
               ),
               const SizedBox(height: AppSpacing.xs),
@@ -587,5 +592,3 @@ class _ProductTile extends StatelessWidget {
     );
   }
 }
-
-String _money(int minorUnits) => (minorUnits / 100).toStringAsFixed(2);

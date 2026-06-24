@@ -28,6 +28,7 @@ import '../sync/sync_queue_item.dart';
 import '../sync/sync_queue_repository.dart';
 import '../tenant/business.dart';
 import '../tenant/business_repository.dart';
+import '../../shared/currency/currency.dart';
 import '../../shared/theme/app_theme.dart';
 import '../transaction/payment_repository.dart';
 import '../transaction/salary_repository.dart';
@@ -112,6 +113,15 @@ final currentBusinessProvider = FutureProvider<Business>((ref) async {
     throw StateError('Active business $businessId not found');
   }
   return business;
+});
+
+/// The active business's currency code, defaulting to
+/// [kDefaultCurrencyCode] for one that predates the field — convenience
+/// wrapper so screens don't all need to unwrap currentBusinessProvider
+/// just to call formatMoney().
+final currentCurrencyProvider = FutureProvider<String>((ref) async {
+  final business = await ref.watch(currentBusinessProvider.future);
+  return business.baseCurrency ?? kDefaultCurrencyCode;
 });
 
 /// The signed-in user's email (falling back to their uid). Read fresh on

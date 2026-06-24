@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/system/providers.dart';
+import '../../../shared/currency/currency.dart';
 import '../../../shared/theme/app_theme.dart';
 import '../../../shared/widgets/read_only_banner.dart';
 import 'sale.dart';
@@ -72,6 +73,7 @@ class _SalesHistoryScreenState extends ConsumerState<SalesHistoryScreen> {
   Widget build(BuildContext context) {
     final sales = _sales;
     final isReadOnly = ref.watch(isReadOnlyProvider).value ?? false;
+    final currency = ref.watch(currentCurrencyProvider).value;
 
     return Scaffold(
       appBar: AppBar(title: const Text('Sales History')),
@@ -109,7 +111,7 @@ class _SalesHistoryScreenState extends ConsumerState<SalesHistoryScreen> {
                                 child: Icon(Icons.receipt_long_outlined, color: color, size: 18),
                               ),
                               title: Text(sale.documentNumber),
-                              subtitle: Text('${_formatDate(sale.date)}  •  ${_money(sale.grandTotalMinorUnits)}'),
+                              subtitle: Text('${_formatDate(sale.date)}  •  ${formatMoney(sale.grandTotalMinorUnits, currency)}'),
                               trailing: sale.status == SaleStatus.posted
                                   ? OutlinedButton(
                                       onPressed: isReadOnly ? null : () => _confirmReturn(sale),
@@ -139,8 +141,6 @@ class _SalesHistoryScreenState extends ConsumerState<SalesHistoryScreen> {
       return ('Void', Colors.grey);
   }
 }
-
-String _money(int minorUnits) => (minorUnits / 100).toStringAsFixed(2);
 
 String _formatDate(DateTime date) =>
     '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';

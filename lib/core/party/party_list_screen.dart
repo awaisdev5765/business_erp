@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../system/providers.dart';
+import '../../shared/currency/currency.dart';
 import '../../shared/theme/app_theme.dart';
 import 'party.dart';
 import 'party_ledger_screen.dart';
@@ -103,6 +104,7 @@ class _PartyListScreenState extends ConsumerState<PartyListScreen> {
   Widget build(BuildContext context) {
     final isCustomer = widget.type == PartyType.customer;
     final data = _partiesWithBalance;
+    final currency = ref.watch(currentCurrencyProvider).value;
     final filtered = data == null
         ? null
         : (_query.isEmpty
@@ -228,7 +230,7 @@ class _PartyListScreenState extends ConsumerState<PartyListScreen> {
                                           ),
                                           const SizedBox(width: 4),
                                           Text(
-                                            _money(owesUs.abs()),
+                                            formatMoney(owesUs.abs(), currency),
                                             style: TextStyle(
                                               color: owesUs > 0
                                                   ? AppColors.destructive
@@ -254,5 +256,3 @@ class _PartyListScreenState extends ConsumerState<PartyListScreen> {
     );
   }
 }
-
-String _money(int minorUnits) => (minorUnits / 100).toStringAsFixed(2);
