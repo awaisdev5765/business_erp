@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../system/providers.dart';
+import '../../shared/theme/app_theme.dart';
 import 'party.dart';
 import 'party_ledger_screen.dart';
 
@@ -45,8 +46,10 @@ class _PartyListScreenState extends ConsumerState<PartyListScreen> {
         title: Text(widget.type == PartyType.customer ? 'New Customer' : 'New Supplier'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             TextField(controller: nameController, decoration: const InputDecoration(labelText: 'Name')),
+            const SizedBox(height: AppSpacing.md),
             TextField(controller: phoneController, decoration: const InputDecoration(labelText: 'Phone')),
           ],
         ),
@@ -81,26 +84,66 @@ class _PartyListScreenState extends ConsumerState<PartyListScreen> {
       body: data == null
           ? const Center(child: CircularProgressIndicator())
           : data.isEmpty
-              ? Center(child: Text('No ${isCustomer ? 'customers' : 'suppliers'} yet — tap + to add one.'))
-              : ListView.builder(
+              ? Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        isCustomer ? Icons.people_outline : Icons.local_shipping_outlined,
+                        size: 40,
+                        color: Colors.grey.shade400,
+                      ),
+                      const SizedBox(height: AppSpacing.md),
+                      Text('No ${isCustomer ? 'customers' : 'suppliers'} yet — tap + to add one.'),
+                    ],
+                  ),
+                )
+              : ListView.separated(
+                  padding: const EdgeInsets.all(AppSpacing.lg),
                   itemCount: data.length,
+                  separatorBuilder: (_, _) => const SizedBox(height: AppSpacing.sm),
                   itemBuilder: (context, index) {
                     final (party, balance) = data[index];
                     // Receivable (customer owes us) is positive Dr; payable
                     // (we owe supplier) is negative Cr — see PartyRepository.
                     final owesUs = isCustomer ? balance : -balance;
-                    return ListTile(
-                      title: Text(party.name),
-                      subtitle: party.phone != null ? Text(party.phone!) : null,
-                      trailing: Text(
-                        _money(owesUs.abs()),
-                        style: TextStyle(
-                          color: owesUs > 0 ? Colors.red : Colors.green,
-                          fontWeight: FontWeight.bold,
+                    final initials = party.name.trim().isEmpty
+                        ? '?'
+                        : party.name.trim().split(RegExp(r'\s+')).take(2).map((w) => w[0].toUpperCase()).join();
+
+                    return Card(
+                      child: ListTile(
+                        contentPadding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg, vertical: AppSpacing.xs),
+                        leading: CircleAvatar(
+                          backgroundColor: AppColors.accent.withValues(alpha: 0.12),
+                          foregroundColor: AppColors.accent,
+                          child: Text(initials, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
                         ),
-                      ),
-                      onTap: () => Navigator.of(context).push(
-                        MaterialPageRoute(builder: (_) => PartyLedgerScreen(party: party)),
+                        title: Text(party.name),
+                        subtitle: party.phone != null ? Text(party.phone!) : null,
+                        trailing: owesUs == 0
+                            ? Text('Settled', style: TextStyle(color: Colors.grey.shade500))
+                            : Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    owesUs > 0 ? Icons.arrow_upward : Icons.arrow_downward,
+                                    size: 14,
+                                    color: owesUs > 0 ? AppColors.destructive : AppColors.success,
+                                  ),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    _money(owesUs.abs()),
+                                    style: TextStyle(
+                                      color: owesUs > 0 ? AppColors.destructive : AppColors.success,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                        onTap: () => Navigator.of(context).push(
+                          MaterialPageRoute(builder: (_) => PartyLedgerScreen(party: party)),
+                        ),
                       ),
                     );
                   },

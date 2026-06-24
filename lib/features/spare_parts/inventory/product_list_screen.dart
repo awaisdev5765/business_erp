@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/system/providers.dart';
+import '../../../shared/theme/app_theme.dart';
 import 'product.dart';
 
 class ProductListScreen extends ConsumerStatefulWidget {
@@ -42,19 +43,24 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
           width: 360,
           child: Column(
             mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               TextField(controller: skuController, decoration: const InputDecoration(labelText: 'SKU')),
+              const SizedBox(height: AppSpacing.md),
               TextField(controller: nameController, decoration: const InputDecoration(labelText: 'Name')),
+              const SizedBox(height: AppSpacing.md),
               TextField(
                 controller: costController,
                 decoration: const InputDecoration(labelText: 'Cost price'),
                 keyboardType: TextInputType.number,
               ),
+              const SizedBox(height: AppSpacing.md),
               TextField(
                 controller: priceController,
                 decoration: const InputDecoration(labelText: 'Sale price'),
                 keyboardType: TextInputType.number,
               ),
+              const SizedBox(height: AppSpacing.md),
               TextField(
                 controller: stockController,
                 decoration: const InputDecoration(labelText: 'Opening stock'),
@@ -99,20 +105,45 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
       body: products == null
           ? const Center(child: CircularProgressIndicator())
           : products.isEmpty
-              ? const Center(child: Text('No products yet — tap + to add one.'))
-              : ListView.builder(
+              ? Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.inventory_2_outlined, size: 40, color: Colors.grey.shade400),
+                      const SizedBox(height: AppSpacing.md),
+                      const Text('No products yet — tap + to add one.'),
+                    ],
+                  ),
+                )
+              : ListView.separated(
+                  padding: const EdgeInsets.all(AppSpacing.lg),
                   itemCount: products.length,
+                  separatorBuilder: (_, _) => const SizedBox(height: AppSpacing.sm),
                   itemBuilder: (context, index) {
                     final p = products[index];
                     final low = p.stockQuantity <= p.reorderLevel;
-                    return ListTile(
-                      title: Text(p.name),
-                      subtitle: Text('SKU: ${p.sku}  •  Cost: ${_money(p.costPriceMinorUnits)}  •  Price: ${_money(p.salePriceMinorUnits)}'),
-                      trailing: Text(
-                        'Stock: ${p.stockQuantity}',
-                        style: TextStyle(
-                          color: low ? Colors.red : null,
-                          fontWeight: low ? FontWeight.bold : null,
+                    return Card(
+                      child: ListTile(
+                        contentPadding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg, vertical: AppSpacing.xs),
+                        leading: Container(
+                          width: 40,
+                          height: 40,
+                          decoration: BoxDecoration(
+                            color: AppColors.accent.withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: const Icon(Icons.inventory_2_outlined, color: AppColors.accent, size: 18),
+                        ),
+                        title: Text(p.name),
+                        subtitle: Text('SKU: ${p.sku}  •  Cost: ${_money(p.costPriceMinorUnits)}  •  Price: ${_money(p.salePriceMinorUnits)}'),
+                        trailing: Chip(
+                          label: Text('Stock: ${p.stockQuantity}'),
+                          backgroundColor: low ? AppColors.destructive.withValues(alpha: 0.12) : null,
+                          labelStyle: TextStyle(
+                            color: low ? AppColors.destructive : null,
+                            fontWeight: low ? FontWeight.w700 : null,
+                          ),
+                          side: BorderSide.none,
                         ),
                       ),
                     );
