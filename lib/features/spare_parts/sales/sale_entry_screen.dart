@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/party/party.dart';
 import '../../../core/system/providers.dart';
 import '../../../shared/currency/currency.dart';
+import '../../../shared/pdf/thermal_receipt_pdf.dart';
 import '../../../shared/theme/app_theme.dart';
 import '../../../shared/widgets/quantity_stepper.dart';
 import '../../../shared/widgets/read_only_banner.dart';
@@ -46,7 +47,6 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
   List<Party> _customers = [];
   Party? _selectedCustomer;
   bool _submitting = false;
-  String _businessName = '';
   String? _currency;
 
   @override
@@ -84,7 +84,6 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
         _customers = customers;
         _allProducts = products;
         _categoriesByUuid = {for (final c in categories) c.uuid: c};
-        _businessName = business.name;
         _currency = business.baseCurrency;
       });
     }
@@ -119,6 +118,77 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
   int get _total => _cart.fold(0, (sum, l) => sum + l.totalMinorUnits);
   int get _itemCount => _cart.fold(0, (sum, l) => sum + l.quantity);
 
+  /// Shown right after a sale posts — printing is the actual point of a
+  /// POS flow, so this offers it immediately rather than burying it in
+  /// a SnackBar action that disappears in a few seconds. 80mm/58mm
+  /// thermal receipt or a full A4 invoice; works the same on web/
+  /// Android/iOS/Windows since `printing` hands off to each platform's
+  /// native print/share sheet regardless of page format.
+  Future<void> _showPrintDialog({
+    required Sale sale,
+    Party? customer,
+    required Map<String, Product> productsByUuid,
+  }) async {
+    final business = await ref.read(currentBusinessProvider.future);
+
+    if (!mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Sale Saved — Print Receipt?'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            FilledButton.icon(
+              icon: const Icon(Icons.receipt_long),
+              label: const Text('80mm Thermal Receipt'),
+              onPressed: () => ThermalReceiptPdf.printReceipt(
+                sale: sale,
+                businessName: business.name,
+                businessAddress: business.address,
+                businessPhone: business.phone,
+                customer: customer,
+                productsByUuid: productsByUuid,
+                currencyCode: business.baseCurrency,
+                width: ReceiptWidth.mm80,
+              ),
+            ),
+            const SizedBox(height: AppSpacing.sm),
+            FilledButton.icon(
+              icon: const Icon(Icons.receipt_long),
+              label: const Text('58mm Thermal Receipt'),
+              onPressed: () => ThermalReceiptPdf.printReceipt(
+                sale: sale,
+                businessName: business.name,
+                businessAddress: business.address,
+                businessPhone: business.phone,
+                customer: customer,
+                productsByUuid: productsByUuid,
+                currencyCode: business.baseCurrency,
+                width: ReceiptWidth.mm58,
+              ),
+            ),
+            const SizedBox(height: AppSpacing.sm),
+            OutlinedButton.icon(
+              icon: const Icon(Icons.description_outlined),
+              label: const Text('A4 Invoice'),
+              onPressed: () => InvoicePdf.printInvoice(
+                sale: sale,
+                businessName: business.name,
+                customer: customer,
+                productsByUuid: productsByUuid,
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Skip')),
+        ],
+      ),
+    );
+  }
+
   Future<void> _submit() async {
     if (_cart.isEmpty) return;
     if (_paymentMethod == PaymentMethod.credit && _selectedCustomer == null) {
@@ -151,28 +221,14 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
 
       final productsByUuid = {for (final l in _cart) l.product.uuid: l.product};
       final savedCustomer = _selectedCustomer;
-      final businessName = _businessName;
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text('Sale saved'),
-            action: SnackBarAction(
-              label: 'PRINT INVOICE',
-              onPressed: () => InvoicePdf.printInvoice(
-                sale: sale,
-                businessName: businessName,
-                customer: savedCustomer,
-                productsByUuid: productsByUuid,
-              ),
-            ),
-          ),
-        );
         setState(() {
           _cart.clear();
           _selectedCustomer = null;
           _paymentMethod = PaymentMethod.cash;
         });
+        await _showPrintDialog(sale: sale, customer: savedCustomer, productsByUuid: productsByUuid);
       }
       await _load(); // refresh stock quantities shown in the product grid
     } catch (e) {
