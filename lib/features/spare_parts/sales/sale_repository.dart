@@ -4,6 +4,7 @@ import 'package:uuid/uuid.dart';
 import '../../../core/accounting/approval_threshold_repository.dart';
 import '../../../core/accounting/journal_entry.dart';
 import '../../../core/accounting/ledger_repository.dart';
+import '../../../core/system/audit_log_repository.dart';
 import '../../../core/system/number_sequence_service.dart';
 import '../inventory/product.dart';
 import '../inventory/product_repository.dart';
@@ -32,13 +33,14 @@ class SaleLineInput {
 /// pattern as `fiscalPeriods` elsewhere: without one, every sale posts
 /// immediately, unchanged from Phase 1.
 class SaleRepository {
-  SaleRepository(this.db, this.ledger, this.products, this.numbering, [this.approvalThresholds]);
+  SaleRepository(this.db, this.ledger, this.products, this.numbering, [this.approvalThresholds, this.auditLog]);
 
   final Database db;
   final LedgerRepository ledger;
   final ProductRepository products;
   final NumberSequenceService numbering;
   final ApprovalThresholdRepository? approvalThresholds;
+  final AuditLogRepository? auditLog;
 
   Future<Sale> create({
     required String businessId,
@@ -113,6 +115,15 @@ class SaleRepository {
       }
     });
 
+    await auditLog?.log(
+      businessId: businessId,
+      action: requiresApproval ? 'create_pending_approval' : 'create',
+      entityType: 'Sale',
+      entityId: sale.uuid,
+      performedBy: createdBy,
+      details: '${sale.documentNumber} — ${lines.length} line(s)',
+    );
+
     return sale;
   }
 
@@ -137,6 +148,15 @@ class SaleRepository {
         whereArgs: [saleUuid],
       );
     });
+
+    await auditLog?.log(
+      businessId: sale.businessId,
+      action: 'approve',
+      entityType: 'Sale',
+      entityId: sale.uuid,
+      performedBy: approvedBy,
+      details: sale.documentNumber,
+    );
   }
 
   Future<void> _postSale(

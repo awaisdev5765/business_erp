@@ -195,6 +195,7 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
       salePriceMinorUnits: ((double.tryParse(priceController.text) ?? 0) * 100)
           .round(),
       openingStock: int.tryParse(stockController.text) ?? 0,
+      createdBy: currentUser,
     );
     await _load();
   }

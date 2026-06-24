@@ -256,7 +256,8 @@ final bankAccountRepositoryProvider = FutureProvider<BankAccountRepository>((ref
 final productRepositoryProvider = FutureProvider<ProductRepository>((ref) async {
   final db = await ref.watch(databaseProvider.future);
   final syncQueue = await ref.watch(syncQueueRepositoryProvider.future);
-  return ProductRepository(db, syncQueue);
+  final auditLog = await ref.watch(auditLogRepositoryProvider.future);
+  return ProductRepository(db, syncQueue, auditLog);
 });
 
 final categoryRepositoryProvider = FutureProvider<CategoryRepository>((ref) async {
@@ -281,7 +282,8 @@ final purchaseRepositoryProvider = FutureProvider<PurchaseRepository>((ref) asyn
   final ledger = await ref.watch(ledgerRepositoryProvider.future);
   final products = await ref.watch(productRepositoryProvider.future);
   final numbering = await ref.watch(numberSequenceServiceProvider.future);
-  return PurchaseRepository(db, ledger, products, numbering);
+  final auditLog = await ref.watch(auditLogRepositoryProvider.future);
+  return PurchaseRepository(db, ledger, products, numbering, auditLog);
 });
 
 final saleRepositoryProvider = FutureProvider<SaleRepository>((ref) async {
@@ -290,7 +292,8 @@ final saleRepositoryProvider = FutureProvider<SaleRepository>((ref) async {
   final products = await ref.watch(productRepositoryProvider.future);
   final numbering = await ref.watch(numberSequenceServiceProvider.future);
   final approvalThresholds = await ref.watch(approvalThresholdRepositoryProvider.future);
-  return SaleRepository(db, ledger, products, numbering, approvalThresholds);
+  final auditLog = await ref.watch(auditLogRepositoryProvider.future);
+  return SaleRepository(db, ledger, products, numbering, approvalThresholds, auditLog);
 });
 
 final paymentRepositoryProvider = FutureProvider<PaymentRepository>((ref) async {

@@ -3,6 +3,7 @@ import 'package:uuid/uuid.dart';
 
 import '../../../core/accounting/journal_entry.dart';
 import '../../../core/accounting/ledger_repository.dart';
+import '../../../core/system/audit_log_repository.dart';
 import '../../../core/system/number_sequence_service.dart';
 import '../inventory/product.dart';
 import '../inventory/product_repository.dart';
@@ -32,12 +33,13 @@ class PurchaseLineInput {
 /// tax filing needs that breakdown — that's future Tax Summary report
 /// work, not a Phase 2 goal.
 class PurchaseRepository {
-  PurchaseRepository(this.db, this.ledger, this.products, this.numbering);
+  PurchaseRepository(this.db, this.ledger, this.products, this.numbering, [this.auditLog]);
 
   final Database db;
   final LedgerRepository ledger;
   final ProductRepository products;
   final NumberSequenceService numbering;
+  final AuditLogRepository? auditLog;
 
   Future<Purchase> create({
     required String businessId,
@@ -137,6 +139,15 @@ class PurchaseRepository {
         ],
       );
     });
+
+    await auditLog?.log(
+      businessId: businessId,
+      action: 'create',
+      entityType: 'Purchase',
+      entityId: purchase.uuid,
+      performedBy: createdBy,
+      details: '${purchase.documentNumber} — ${lines.length} line(s)',
+    );
 
     return purchase;
   }

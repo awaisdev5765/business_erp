@@ -3,16 +3,19 @@ import 'package:uuid/uuid.dart';
 
 import '../../../core/sync/sync_queue_item.dart';
 import '../../../core/sync/sync_queue_repository.dart';
+import '../../../core/system/audit_log_repository.dart';
 import 'product.dart';
 
 const _uuid = Uuid();
 
 class ProductRepository {
-  /// [syncQueue] is optional, same opt-in pattern as elsewhere.
-  ProductRepository(this.db, [this.syncQueue]);
+  /// [syncQueue]/[auditLog] are optional, same opt-in pattern as
+  /// elsewhere.
+  ProductRepository(this.db, [this.syncQueue, this.auditLog]);
 
   final Database db;
   final SyncQueueRepository? syncQueue;
+  final AuditLogRepository? auditLog;
 
   Future<Product> create({
     required String businessId,
@@ -25,6 +28,7 @@ class ProductRepository {
     double taxRatePercent = 0,
     int openingStock = 0,
     int reorderLevel = 0,
+    String createdBy = 'system',
   }) async {
     final now = DateTime.now();
     final product = Product(
@@ -52,6 +56,14 @@ class ProductRepository {
         operation: SyncOperation.create,
       );
     }
+    await auditLog?.log(
+      businessId: businessId,
+      action: 'create',
+      entityType: 'Product',
+      entityId: product.uuid,
+      performedBy: createdBy,
+      details: '$sku — $name',
+    );
     return product;
   }
 
