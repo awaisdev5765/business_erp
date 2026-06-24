@@ -247,6 +247,60 @@ class SaleRepository {
     );
   }
 
+  /// Customer returns everything from a posted sale — restores the
+  /// stock and reverses the original JournalEntry (Dr/Cr swapped,
+  /// referencing the original — see LedgerRepository.reverse()) rather
+  /// than building a new entry by hand. Whole-sale only, not per-line:
+  /// SaleStatus.returned already existed in the model but nothing wrote
+  /// it; partial returns would need a quantity-returned-so-far ledger
+  /// per line, which doesn't exist yet — a real, accepted gap, scoped
+  /// out rather than half-built.
+  Future<void> returnSale(String saleUuid, {required String returnedBy, required String deviceId}) async {
+    final sale = await findByUuid(saleUuid);
+    if (sale == null) {
+      throw StateError('Sale $saleUuid not found');
+    }
+    if (sale.status != SaleStatus.posted) {
+      throw StateError('Only a posted sale can be returned (this one is ${sale.status.name})');
+    }
+
+    final entry = await ledger.findBySource(sourceType: 'Sale', sourceId: saleUuid);
+    if (entry == null) {
+      throw StateError('No posted journal entry found for sale $saleUuid');
+    }
+
+    await ledger.reverse(entry, createdBy: returnedBy, deviceId: deviceId);
+
+    await db.transaction((txn) async {
+      for (final line in sale.lines) {
+        await products.adjustStock(
+          txn,
+          businessId: sale.businessId,
+          productUuid: line.productUuid,
+          quantityChange: line.quantity,
+          reason: StockMovementReason.saleReturn,
+          sourceType: 'Sale',
+          sourceId: saleUuid,
+        );
+      }
+      await txn.update(
+        Sale.tableName,
+        {'status': SaleStatus.returned.name},
+        where: 'uuid = ?',
+        whereArgs: [saleUuid],
+      );
+    });
+
+    await auditLog?.log(
+      businessId: sale.businessId,
+      action: 'return',
+      entityType: 'Sale',
+      entityId: saleUuid,
+      performedBy: returnedBy,
+      details: sale.documentNumber,
+    );
+  }
+
   Future<Sale?> findByUuid(String uuid) async {
     final rows = await db.query(Sale.tableName, where: 'uuid = ?', whereArgs: [uuid], limit: 1);
     if (rows.isEmpty) return null;

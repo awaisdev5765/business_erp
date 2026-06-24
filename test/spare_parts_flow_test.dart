@@ -143,6 +143,74 @@ void main() {
     expect(cashBalance, 1500);
   });
 
+  test('returning a sale restores stock and reverses the original entry', () async {
+    final customer = await parties.create(businessId: businessId, type: PartyType.customer, name: 'Walk-in Customer');
+    final supplier = await parties.create(businessId: businessId, type: PartyType.supplier, name: 'Acme Parts Co');
+    final product = await products.create(
+      businessId: businessId,
+      sku: 'BRK-003',
+      name: 'Oil Filter',
+      costPriceMinorUnits: 500,
+      salePriceMinorUnits: 900,
+    );
+
+    await purchases.create(
+      businessId: businessId,
+      supplierUuid: supplier.uuid,
+      createdBy: user,
+      deviceId: deviceId,
+      lineInputs: [PurchaseLineInput(productUuid: product.uuid, quantity: 5, unitCostMinorUnits: 500)],
+    );
+
+    final sale = await sales.create(
+      businessId: businessId,
+      customerUuid: customer.uuid,
+      paymentMethod: PaymentMethod.credit,
+      createdBy: user,
+      deviceId: deviceId,
+      lineInputs: [SaleLineInput(productUuid: product.uuid, quantity: 3, unitPriceMinorUnits: 900)],
+    );
+
+    expect((await products.findByUuid(product.uuid))!.stockQuantity, 2); // 5 - 3
+    expect(await parties.outstandingBalanceMinorUnits(customer.uuid), 2700); // 3 * 900
+
+    await sales.returnSale(sale.uuid, returnedBy: user, deviceId: deviceId);
+
+    expect((await products.findByUuid(product.uuid))!.stockQuantity, 5); // restored
+    expect(await parties.outstandingBalanceMinorUnits(customer.uuid), 0); // reversed
+    expect(await ledger.accountBalanceMinorUnits(businessId: businessId, accountCode: '4010'), 0);
+    expect(await ledger.accountBalanceMinorUnits(businessId: businessId, accountCode: '5010'), 0);
+
+    final returned = await sales.findByUuid(sale.uuid);
+    expect(returned!.status, SaleStatus.returned);
+  });
+
+  test('returning an already-returned sale throws', () async {
+    final product = await products.create(
+      businessId: businessId,
+      sku: 'BRK-004',
+      name: 'Spark Plug',
+      costPriceMinorUnits: 300,
+      salePriceMinorUnits: 600,
+      openingStock: 5,
+    );
+
+    final sale = await sales.create(
+      businessId: businessId,
+      paymentMethod: PaymentMethod.cash,
+      createdBy: user,
+      deviceId: deviceId,
+      lineInputs: [SaleLineInput(productUuid: product.uuid, quantity: 1, unitPriceMinorUnits: 600)],
+    );
+
+    await sales.returnSale(sale.uuid, returnedBy: user, deviceId: deviceId);
+
+    expect(
+      () => sales.returnSale(sale.uuid, returnedBy: user, deviceId: deviceId),
+      throwsStateError,
+    );
+  });
+
   test('cash sale rejects when stock is insufficient', () async {
     final product = await products.create(
       businessId: businessId,

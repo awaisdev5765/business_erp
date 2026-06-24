@@ -11,6 +11,7 @@ import '../inventory/product.dart';
 import 'invoice_pdf.dart';
 import 'sale.dart';
 import 'sale_repository.dart';
+import 'sales_history_screen.dart';
 
 class _CartLine {
   _CartLine(this.product, this.quantity);
@@ -186,7 +187,18 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
   Widget build(BuildContext context) {
     final isReadOnly = ref.watch(isReadOnlyProvider).value ?? false;
     return Scaffold(
-      appBar: AppBar(title: const Text('New Sale')),
+      appBar: AppBar(
+        title: const Text('New Sale'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.history),
+            tooltip: 'Sales History & Returns',
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const SalesHistoryScreen()),
+            ),
+          ),
+        ],
+      ),
       body: Column(
         children: [
           if (isReadOnly) const ReadOnlyBanner(),

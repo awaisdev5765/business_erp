@@ -304,6 +304,30 @@ class LedgerRepository {
     );
   }
 
+  /// Finds the (posted) JournalEntry a given source record created — for
+  /// SaleRepository.returnSale(), which needs to reverse the *original*
+  /// sale's entry rather than building a new one by hand. Only ever
+  /// returns a `posted` entry: a sale that's `pendingApproval` has no
+  /// entry yet, and one that's already `reversed`/`void_` shouldn't be
+  /// found again by a second reversal attempt.
+  Future<JournalEntry?> findBySource({required String sourceType, required String sourceId}) async {
+    final rows = await db.query(
+      JournalEntry.tableName,
+      where: 'source_type = ? AND source_id = ? AND status = ?',
+      whereArgs: [sourceType, sourceId, JournalEntryStatus.posted.name],
+      limit: 1,
+    );
+    if (rows.isEmpty) return null;
+
+    final lineRows = await db.query(
+      JournalLine.tableName,
+      where: 'entry_uuid = ?',
+      whereArgs: [rows.first['uuid']],
+    );
+
+    return JournalEntry.fromMap(rows.first, lines: lineRows.map(JournalLine.fromMap).toList());
+  }
+
   /// Closing balance for one account. Reads from the rollup tables when
   /// [rollups] is wired in (PHASES.md Phase 8 — O(1) instead of scanning
   /// every line ever posted to this account); falls back to the original
