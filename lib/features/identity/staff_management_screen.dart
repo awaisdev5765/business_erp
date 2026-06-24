@@ -269,33 +269,85 @@ class _StaffManagementScreenState extends ConsumerState<StaffManagementScreen> {
           body: _staff == null
               ? const Center(child: CircularProgressIndicator())
               : _staff!.isEmpty
-                  ? const Center(child: Text('No staff yet. Add one with the + button.'))
-                  : ListView.separated(
-                      padding: const EdgeInsets.all(AppSpacing.lg),
-                      itemCount: _staff!.length,
-                      separatorBuilder: (_, _) => const SizedBox(height: AppSpacing.sm),
-                      itemBuilder: (context, index) {
-                        final staff = _staff![index];
-                        final businesses = _businesses ?? const <Business>[];
-                        final accessLabels = staff.businessAccess.entries
-                            .map((e) {
-                              final b = businesses.where((b) => b.uuid == e.key).firstOrNull;
-                              return '${b?.name ?? e.key} (${e.value})';
-                            })
-                            .join(', ');
-                        return Card(
-                          child: ListTile(
-                            leading: const Icon(Icons.person_outline),
-                            title: Text(staff.email),
-                            subtitle: Text(accessLabels.isEmpty ? 'No business assigned' : accessLabels),
-                            trailing: const Icon(Icons.chevron_right),
-                            onTap: () => _showEditAccessDialog(staff),
-                          ),
-                        );
-                      },
-                    ),
+                  ? Center(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.groups_2_outlined, size: 40, color: Colors.grey.shade400),
+                          const SizedBox(height: AppSpacing.md),
+                          const Text('No staff yet. Add one with the + button.'),
+                        ],
+                      ),
+                    )
+                  : _buildGroupedByBusiness(context),
         );
       },
+    );
+  }
+
+  /// Grouped by business — "check staff according to set with business"
+  /// — rather than one flat list where you'd have to read each row's
+  /// access labels to figure out who's on which business. A staff
+  /// member with access to N businesses appears once under each.
+  Widget _buildGroupedByBusiness(BuildContext context) {
+    final staff = _staff!;
+    final businesses = _businesses ?? const <Business>[];
+    final unassigned = staff.where((s) => s.businessAccess.isEmpty).toList();
+
+    return ListView(
+      padding: const EdgeInsets.all(AppSpacing.lg),
+      children: [
+        for (final business in businesses) ...[
+          _buildBusinessGroup(
+            context,
+            title: business.name,
+            staffInGroup: staff.where((s) => s.businessAccess.containsKey(business.uuid)).toList(),
+            roleFor: (s) => s.businessAccess[business.uuid]!,
+          ),
+          const SizedBox(height: AppSpacing.lg),
+        ],
+        if (unassigned.isNotEmpty)
+          _buildBusinessGroup(
+            context,
+            title: 'Unassigned',
+            staffInGroup: unassigned,
+            roleFor: (_) => null,
+          ),
+      ],
+    );
+  }
+
+  Widget _buildBusinessGroup(
+    BuildContext context, {
+    required String title,
+    required List<UserProfile> staffInGroup,
+    required String? Function(UserProfile) roleFor,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(title.toUpperCase(), style: TextStyle(fontWeight: FontWeight.w700, letterSpacing: 0.6, color: Colors.grey.shade600, fontSize: 12)),
+        const SizedBox(height: AppSpacing.sm),
+        if (staffInGroup.isEmpty)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
+            child: Text('No staff assigned yet', style: TextStyle(color: Colors.grey.shade500)),
+          )
+        else
+          ...staffInGroup.map((staff) {
+            final role = roleFor(staff);
+            return Card(
+              margin: const EdgeInsets.only(bottom: AppSpacing.sm),
+              child: ListTile(
+                leading: const Icon(Icons.person_outline),
+                title: Text(staff.email),
+                subtitle: role != null ? Text(role) : const Text('No business assigned'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => _showEditAccessDialog(staff),
+              ),
+            );
+          }),
+      ],
     );
   }
 }

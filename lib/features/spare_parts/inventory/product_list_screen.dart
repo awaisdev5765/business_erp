@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/system/providers.dart';
 import '../../../shared/theme/app_theme.dart';
+import 'category.dart';
 import 'product.dart';
 
 class ProductListScreen extends ConsumerStatefulWidget {
@@ -14,6 +15,8 @@ class ProductListScreen extends ConsumerStatefulWidget {
 
 class _ProductListScreenState extends ConsumerState<ProductListScreen> {
   List<Product>? _products;
+  Map<String, Category> _categoriesByUuid = {};
+  String? _categoryFilter; // null = all categories
   final _searchController = TextEditingController();
   String _query = '';
 
@@ -36,8 +39,73 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
   Future<void> _load() async {
     final businessId = await ref.read(currentBusinessIdProvider.future);
     final repo = await ref.read(productRepositoryProvider.future);
+    final categoryRepo = await ref.read(categoryRepositoryProvider.future);
     final products = await repo.list(businessId: businessId);
-    if (mounted) setState(() => _products = products);
+    final categories = await categoryRepo.list(businessId: businessId);
+    if (mounted) {
+      setState(() {
+        _products = products;
+        _categoriesByUuid = {for (final c in categories) c.uuid: c};
+      });
+    }
+  }
+
+  /// Pick an existing category or type a new name to create one on the
+  /// fly — same pattern as TripDetailScreen's fish-category picker.
+  Future<Category?> _pickOrCreateCategory() async {
+    final businessId = await ref.read(currentBusinessIdProvider.future);
+    final categoryRepo = await ref.read(categoryRepositoryProvider.future);
+    final categories = await categoryRepo.list(businessId: businessId);
+
+    Category? selected;
+    final newNameController = TextEditingController();
+
+    if (!mounted) return null;
+    final picked = await showDialog<Category?>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Category'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (categories.isNotEmpty)
+                DropdownButtonFormField<Category?>(
+                  initialValue: selected,
+                  decoration: const InputDecoration(labelText: 'Existing category'),
+                  items: [
+                    const DropdownMenuItem<Category?>(value: null, child: Text('None')),
+                    ...categories.map((c) => DropdownMenuItem<Category?>(value: c, child: Text(c.name))),
+                  ],
+                  onChanged: (v) => setDialogState(() => selected = v),
+                ),
+              const SizedBox(height: AppSpacing.md),
+              TextField(
+                controller: newNameController,
+                decoration: const InputDecoration(labelText: 'Or add a new category'),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context, null), child: const Text('Cancel')),
+            FilledButton(
+              onPressed: () async {
+                if (newNameController.text.isNotEmpty) {
+                  final created = await categoryRepo.create(businessId: businessId, name: newNameController.text);
+                  if (!context.mounted) return;
+                  Navigator.pop(context, created);
+                } else {
+                  Navigator.pop(context, selected);
+                }
+              },
+              child: const Text('Use'),
+            ),
+          ],
+        ),
+      ),
+    );
+    return picked;
   }
 
   Future<void> _showAddDialog() async {
@@ -46,57 +114,69 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
     final costController = TextEditingController();
     final priceController = TextEditingController();
     final stockController = TextEditingController(text: '0');
+    Category? category;
 
     final saved = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('New Product'),
-        content: SizedBox(
-          width: 360,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              TextField(
-                controller: skuController,
-                decoration: const InputDecoration(labelText: 'SKU'),
-              ),
-              const SizedBox(height: AppSpacing.md),
-              TextField(
-                controller: nameController,
-                decoration: const InputDecoration(labelText: 'Name'),
-              ),
-              const SizedBox(height: AppSpacing.md),
-              TextField(
-                controller: costController,
-                decoration: const InputDecoration(labelText: 'Cost price'),
-                keyboardType: TextInputType.number,
-              ),
-              const SizedBox(height: AppSpacing.md),
-              TextField(
-                controller: priceController,
-                decoration: const InputDecoration(labelText: 'Sale price'),
-                keyboardType: TextInputType.number,
-              ),
-              const SizedBox(height: AppSpacing.md),
-              TextField(
-                controller: stockController,
-                decoration: const InputDecoration(labelText: 'Opening stock'),
-                keyboardType: TextInputType.number,
-              ),
-            ],
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('New Product'),
+          content: SizedBox(
+            width: 360,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                TextField(
+                  controller: skuController,
+                  decoration: const InputDecoration(labelText: 'SKU'),
+                ),
+                const SizedBox(height: AppSpacing.md),
+                TextField(
+                  controller: nameController,
+                  decoration: const InputDecoration(labelText: 'Name'),
+                ),
+                const SizedBox(height: AppSpacing.md),
+                OutlinedButton.icon(
+                  onPressed: () async {
+                    final picked = await _pickOrCreateCategory();
+                    setDialogState(() => category = picked);
+                  },
+                  icon: const Icon(Icons.sell_outlined, size: 16),
+                  label: Text(category?.name ?? 'Category (optional)'),
+                ),
+                const SizedBox(height: AppSpacing.md),
+                TextField(
+                  controller: costController,
+                  decoration: const InputDecoration(labelText: 'Cost price'),
+                  keyboardType: TextInputType.number,
+                ),
+                const SizedBox(height: AppSpacing.md),
+                TextField(
+                  controller: priceController,
+                  decoration: const InputDecoration(labelText: 'Sale price'),
+                  keyboardType: TextInputType.number,
+                ),
+                const SizedBox(height: AppSpacing.md),
+                TextField(
+                  controller: stockController,
+                  decoration: const InputDecoration(labelText: 'Opening stock'),
+                  keyboardType: TextInputType.number,
+                ),
+              ],
+            ),
           ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Save'),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Save'),
-          ),
-        ],
       ),
     );
 
@@ -109,6 +189,7 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
       businessId: businessId,
       sku: skuController.text,
       name: nameController.text,
+      categoryUuid: category?.uuid,
       costPriceMinorUnits: ((double.tryParse(costController.text) ?? 0) * 100)
           .round(),
       salePriceMinorUnits: ((double.tryParse(priceController.text) ?? 0) * 100)
@@ -121,17 +202,12 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
   @override
   Widget build(BuildContext context) {
     final products = _products;
-    final filtered = products == null
-        ? null
-        : (_query.isEmpty
-              ? products
-              : products
-                    .where(
-                      (p) =>
-                          p.name.toLowerCase().contains(_query) ||
-                          p.sku.toLowerCase().contains(_query),
-                    )
-                    .toList());
+    final filtered = products?.where((p) {
+      final matchesQuery =
+          _query.isEmpty || p.name.toLowerCase().contains(_query) || p.sku.toLowerCase().contains(_query);
+      final matchesCategory = _categoryFilter == null || p.categoryUuid == _categoryFilter;
+      return matchesQuery && matchesCategory;
+    }).toList();
 
     return Scaffold(
       appBar: AppBar(title: const Text('Products')),
@@ -144,7 +220,7 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
           ? const Center(child: CircularProgressIndicator())
           : Column(
               children: [
-                if (products.isNotEmpty)
+                if (products.isNotEmpty) ...[
                   Padding(
                     padding: const EdgeInsets.fromLTRB(
                       AppSpacing.lg,
@@ -160,6 +236,35 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
                       ),
                     ),
                   ),
+                  if (_categoriesByUuid.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(AppSpacing.lg, AppSpacing.md, AppSpacing.lg, 0),
+                      child: SizedBox(
+                        height: 32,
+                        child: ListView(
+                          scrollDirection: Axis.horizontal,
+                          children: [
+                            Padding(
+                              padding: const EdgeInsets.only(right: AppSpacing.sm),
+                              child: ChoiceChip(
+                                label: const Text('All'),
+                                selected: _categoryFilter == null,
+                                onSelected: (_) => setState(() => _categoryFilter = null),
+                              ),
+                            ),
+                            ..._categoriesByUuid.values.map((c) => Padding(
+                                  padding: const EdgeInsets.only(right: AppSpacing.sm),
+                                  child: ChoiceChip(
+                                    label: Text(c.name),
+                                    selected: _categoryFilter == c.uuid,
+                                    onSelected: (_) => setState(() => _categoryFilter = c.uuid),
+                                  ),
+                                )),
+                          ],
+                        ),
+                      ),
+                    ),
+                ],
                 Expanded(
                   child: products.isEmpty
                       ? Center(
@@ -214,7 +319,9 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
                                 ),
                                 title: Text(p.name),
                                 subtitle: Text(
-                                  'SKU: ${p.sku}  •  Cost: ${_money(p.costPriceMinorUnits)}  •  Price: ${_money(p.salePriceMinorUnits)}',
+                                  'SKU: ${p.sku}'
+                                  '${p.categoryUuid != null ? '  •  ${_categoriesByUuid[p.categoryUuid]?.name ?? ''}' : ''}'
+                                  '  •  Cost: ${_money(p.costPriceMinorUnits)}  •  Price: ${_money(p.salePriceMinorUnits)}',
                                 ),
                                 trailing: Chip(
                                   label: Text('Stock: ${p.stockQuantity}'),
