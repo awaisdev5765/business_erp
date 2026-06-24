@@ -5,6 +5,7 @@ import '../../core/party/party.dart';
 import '../../core/system/providers.dart';
 import '../../core/transaction/salary_record.dart';
 import '../../shared/theme/app_theme.dart';
+import '../../shared/widgets/read_only_banner.dart';
 
 /// Lists every Party who could be on payroll (Captains/Crew/Drivers and
 /// the generic `employee` role — see PartyRepository.listStaff()), their
@@ -49,7 +50,9 @@ class _PayrollScreenState extends ConsumerState<PayrollScreen> {
       recordsByParty[person.uuid] = record;
       if (record != null) {
         final history = await salaryRepo.paymentHistory(record.uuid);
-        paidThisPeriod[record.uuid] = history.any((p) => p.period == _currentPeriod);
+        paidThisPeriod[record.uuid] = history.any(
+          (p) => p.period == _currentPeriod,
+        );
       }
     }
 
@@ -80,19 +83,30 @@ class _PayrollScreenState extends ConsumerState<PayrollScreen> {
           keyboardType: TextInputType.number,
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Save')),
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Save'),
+          ),
         ],
       ),
     );
 
     if (saved != true) return;
-    final amount = ((double.tryParse(amountController.text) ?? 0) * 100).round();
+    final amount = ((double.tryParse(amountController.text) ?? 0) * 100)
+        .round();
     if (amount <= 0) return;
 
     final businessId = await ref.read(currentBusinessIdProvider.future);
     final repo = await ref.read(salaryRepositoryProvider.future);
-    await repo.createRecord(businessId: businessId, partyUuid: person.uuid, amountMinorUnits: amount);
+    await repo.createRecord(
+      businessId: businessId,
+      partyUuid: person.uuid,
+      amountMinorUnits: amount,
+    );
     await _load();
   }
 
@@ -107,11 +121,15 @@ class _PayrollScreenState extends ConsumerState<PayrollScreen> {
       );
       await _load();
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Paid for $_currentPeriod')));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Paid for $_currentPeriod')));
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('$e')));
       }
     }
   }
@@ -119,64 +137,96 @@ class _PayrollScreenState extends ConsumerState<PayrollScreen> {
   @override
   Widget build(BuildContext context) {
     final staff = _staff;
+    final isReadOnly = ref.watch(isReadOnlyProvider).value ?? false;
     return Scaffold(
       appBar: AppBar(title: const Text('Payroll')),
-      body: staff == null
-          ? const Center(child: CircularProgressIndicator())
-          : staff.isEmpty
-              ? Center(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.payments_outlined, size: 40, color: Colors.grey.shade400),
-                      const SizedBox(height: AppSpacing.md),
-                      const Text('No staff yet — add Crew, Drivers, or Captains first.'),
-                    ],
-                  ),
-                )
-              : ListView.separated(
-                  padding: const EdgeInsets.all(AppSpacing.lg),
-                  itemCount: staff.length,
-                  separatorBuilder: (_, _) => const SizedBox(height: AppSpacing.sm),
-                  itemBuilder: (context, index) {
-                    final person = staff[index];
-                    final record = _recordsByParty[person.uuid];
-                    final paidThisPeriod = record != null && (_paidThisPeriodByRecord[record.uuid] ?? false);
+      body: Column(
+        children: [
+          if (isReadOnly) const ReadOnlyBanner(),
+          Expanded(
+            child: staff == null
+                ? const Center(child: CircularProgressIndicator())
+                : staff.isEmpty
+                ? Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.payments_outlined,
+                          size: 40,
+                          color: Colors.grey.shade400,
+                        ),
+                        const SizedBox(height: AppSpacing.md),
+                        const Text(
+                          'No staff yet — add Crew, Drivers, or Captains first.',
+                        ),
+                      ],
+                    ),
+                  )
+                : ListView.separated(
+                    padding: const EdgeInsets.all(AppSpacing.lg),
+                    itemCount: staff.length,
+                    separatorBuilder: (_, _) =>
+                        const SizedBox(height: AppSpacing.sm),
+                    itemBuilder: (context, index) {
+                      final person = staff[index];
+                      final record = _recordsByParty[person.uuid];
+                      final paidThisPeriod =
+                          record != null &&
+                          (_paidThisPeriodByRecord[record.uuid] ?? false);
 
-                    return Card(
-                      child: ListTile(
-                        contentPadding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg, vertical: AppSpacing.xs),
-                        leading: CircleAvatar(
-                          backgroundColor: AppColors.accent.withValues(alpha: 0.12),
-                          foregroundColor: AppColors.accent,
-                          child: const Icon(Icons.person_outline, size: 18),
-                        ),
-                        title: Text(person.name),
-                        subtitle: Text(
-                          record == null
-                              ? '${person.type.name} • no salary set'
-                              : '${person.type.name} • ${_money(record.amountMinorUnits)}/mo',
-                        ),
-                        trailing: record == null
-                            ? OutlinedButton(
-                                onPressed: () => _showAddSalaryDialog(person),
-                                child: const Text('Set Salary'),
-                              )
-                            : paidThisPeriod
-                                ? Chip(
-                                    avatar: const Icon(Icons.check_circle, size: 16, color: AppColors.success),
-                                    label: Text('Paid ($_currentPeriod)'),
-                                    backgroundColor: AppColors.success.withValues(alpha: 0.1),
-                                    side: BorderSide.none,
-                                  )
-                                : FilledButton(
-                                    onPressed: () => _paySalary(record),
-                                    child: Text('Pay ($_currentPeriod)'),
+                      return Card(
+                        child: ListTile(
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: AppSpacing.lg,
+                            vertical: AppSpacing.xs,
+                          ),
+                          leading: CircleAvatar(
+                            backgroundColor: AppColors.accent.withValues(
+                              alpha: 0.12,
+                            ),
+                            foregroundColor: AppColors.accent,
+                            child: const Icon(Icons.person_outline, size: 18),
+                          ),
+                          title: Text(person.name),
+                          subtitle: Text(
+                            record == null
+                                ? '${person.type.name} • no salary set'
+                                : '${person.type.name} • ${_money(record.amountMinorUnits)}/mo',
+                          ),
+                          trailing: record == null
+                              ? OutlinedButton(
+                                  onPressed: isReadOnly
+                                      ? null
+                                      : () => _showAddSalaryDialog(person),
+                                  child: const Text('Set Salary'),
+                                )
+                              : paidThisPeriod
+                              ? Chip(
+                                  avatar: const Icon(
+                                    Icons.check_circle,
+                                    size: 16,
+                                    color: AppColors.success,
                                   ),
-                      ),
-                    );
-                  },
-                ),
+                                  label: Text('Paid ($_currentPeriod)'),
+                                  backgroundColor: AppColors.success.withValues(
+                                    alpha: 0.1,
+                                  ),
+                                  side: BorderSide.none,
+                                )
+                              : FilledButton(
+                                  onPressed: isReadOnly
+                                      ? null
+                                      : () => _paySalary(record),
+                                  child: Text('Pay ($_currentPeriod)'),
+                                ),
+                        ),
+                      );
+                    },
+                  ),
+          ),
+        ],
+      ),
     );
   }
 }

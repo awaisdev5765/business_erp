@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/system/providers.dart';
 import '../../shared/theme/app_theme.dart';
+import '../../shared/widgets/read_only_banner.dart';
 import '../spare_parts/sales/sale.dart';
 
 /// Every credit Sale held `pendingApproval` because it exceeded the
@@ -39,14 +40,22 @@ class _ApprovalsScreenState extends ConsumerState<ApprovalsScreen> {
   Future<void> _approve(Sale sale) async {
     final repo = await ref.read(saleRepositoryProvider.future);
     try {
-      await repo.approve(sale.uuid, approvedBy: currentUser, deviceId: currentDeviceId);
+      await repo.approve(
+        sale.uuid,
+        approvedBy: currentUser,
+        deviceId: currentDeviceId,
+      );
       await _load();
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Approved ${sale.documentNumber}')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Approved ${sale.documentNumber}')),
+        );
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('$e')));
       }
     }
   }
@@ -54,43 +63,71 @@ class _ApprovalsScreenState extends ConsumerState<ApprovalsScreen> {
   @override
   Widget build(BuildContext context) {
     final pending = _pending;
+    final isReadOnly = ref.watch(isReadOnlyProvider).value ?? false;
     return Scaffold(
       appBar: AppBar(title: const Text('Approvals')),
-      body: pending == null
-          ? const Center(child: CircularProgressIndicator())
-          : pending.isEmpty
-              ? Center(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.fact_check_outlined, size: 40, color: Colors.grey.shade400),
-                      const SizedBox(height: AppSpacing.md),
-                      const Text('Nothing waiting on approval.'),
-                    ],
-                  ),
-                )
-              : ListView.separated(
-                  padding: const EdgeInsets.all(AppSpacing.lg),
-                  itemCount: pending.length,
-                  separatorBuilder: (_, _) => const SizedBox(height: AppSpacing.sm),
-                  itemBuilder: (context, index) {
-                    final sale = pending[index];
-                    return Card(
-                      child: ListTile(
-                        contentPadding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg, vertical: AppSpacing.sm),
-                        leading: Container(
-                          width: 40,
-                          height: 40,
-                          decoration: BoxDecoration(color: AppColors.warning.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(8)),
-                          child: const Icon(Icons.hourglass_top, color: AppColors.warning, size: 18),
+      body: Column(
+        children: [
+          if (isReadOnly) const ReadOnlyBanner(),
+          Expanded(
+            child: pending == null
+                ? const Center(child: CircularProgressIndicator())
+                : pending.isEmpty
+                ? Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.fact_check_outlined,
+                          size: 40,
+                          color: Colors.grey.shade400,
                         ),
-                        title: Text('Sale ${sale.documentNumber}'),
-                        subtitle: Text('${_money(sale.grandTotalMinorUnits)}  •  ${_formatDate(sale.date)}'),
-                        trailing: FilledButton(onPressed: () => _approve(sale), child: const Text('Approve')),
-                      ),
-                    );
-                  },
-                ),
+                        const SizedBox(height: AppSpacing.md),
+                        const Text('Nothing waiting on approval.'),
+                      ],
+                    ),
+                  )
+                : ListView.separated(
+                    padding: const EdgeInsets.all(AppSpacing.lg),
+                    itemCount: pending.length,
+                    separatorBuilder: (_, _) =>
+                        const SizedBox(height: AppSpacing.sm),
+                    itemBuilder: (context, index) {
+                      final sale = pending[index];
+                      return Card(
+                        child: ListTile(
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: AppSpacing.lg,
+                            vertical: AppSpacing.sm,
+                          ),
+                          leading: Container(
+                            width: 40,
+                            height: 40,
+                            decoration: BoxDecoration(
+                              color: AppColors.warning.withValues(alpha: 0.12),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: const Icon(
+                              Icons.hourglass_top,
+                              color: AppColors.warning,
+                              size: 18,
+                            ),
+                          ),
+                          title: Text('Sale ${sale.documentNumber}'),
+                          subtitle: Text(
+                            '${_money(sale.grandTotalMinorUnits)}  •  ${_formatDate(sale.date)}',
+                          ),
+                          trailing: FilledButton(
+                            onPressed: isReadOnly ? null : () => _approve(sale),
+                            child: const Text('Approve'),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+          ),
+        ],
+      ),
     );
   }
 }

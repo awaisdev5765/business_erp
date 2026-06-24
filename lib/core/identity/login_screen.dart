@@ -28,6 +28,8 @@ class _LoginScreenState extends State<LoginScreen> {
 
   bool? _superAdminExists; // null while still checking
   bool _registeringSuperAdmin = false;
+  bool _sendingReset = false;
+  String? _info;
 
   @override
   void initState() {
@@ -71,6 +73,31 @@ class _LoginScreenState extends State<LoginScreen> {
       setState(() => _error = e.message ?? e.code);
     } finally {
       if (mounted) setState(() => _submitting = false);
+    }
+  }
+
+  /// Self-service password recovery — no Super Admin involvement
+  /// needed. Firebase Auth's `sendPasswordResetEmail` works out of the
+  /// box on the free Spark plan (it's part of the Auth product itself,
+  /// not a Cloud Function), so this needed no backend changes.
+  Future<void> _sendPasswordReset() async {
+    final email = _emailController.text.trim();
+    if (email.isEmpty) {
+      setState(() => _error = 'Enter your email above first, then tap "Forgot password?"');
+      return;
+    }
+    setState(() {
+      _sendingReset = true;
+      _error = null;
+      _info = null;
+    });
+    try {
+      await FirebaseAuth.instance.sendPasswordResetEmail(email: email);
+      if (mounted) setState(() => _info = 'Password reset email sent to $email.');
+    } on FirebaseAuthException catch (e) {
+      setState(() => _error = e.message ?? e.code);
+    } finally {
+      if (mounted) setState(() => _sendingReset = false);
     }
   }
 
@@ -151,6 +178,10 @@ class _LoginScreenState extends State<LoginScreen> {
                   const SizedBox(height: 12),
                   Text(_error!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
                 ],
+                if (_info != null) ...[
+                  const SizedBox(height: 12),
+                  Text(_info!, style: const TextStyle(color: Colors.green)),
+                ],
                 const SizedBox(height: 16),
                 FilledButton(
                   onPressed: _submitting ? null : _submit,
@@ -158,6 +189,15 @@ class _LoginScreenState extends State<LoginScreen> {
                       ? const SizedBox(height: 16, width: 16, child: CircularProgressIndicator(strokeWidth: 2))
                       : const Text('Sign In'),
                 ),
+                if (!showBootstrapButton) ...[
+                  const SizedBox(height: 4),
+                  TextButton(
+                    onPressed: _sendingReset ? null : _sendPasswordReset,
+                    child: _sendingReset
+                        ? const SizedBox(height: 16, width: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                        : const Text('Forgot password?'),
+                  ),
+                ],
                 if (showBootstrapButton) ...[
                   const SizedBox(height: 8),
                   OutlinedButton(

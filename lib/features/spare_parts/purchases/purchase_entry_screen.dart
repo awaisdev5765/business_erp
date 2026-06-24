@@ -5,6 +5,7 @@ import '../../../core/party/party.dart';
 import '../../../core/system/providers.dart';
 import '../../../shared/theme/app_theme.dart';
 import '../../../shared/widgets/quantity_stepper.dart';
+import '../../../shared/widgets/read_only_banner.dart';
 import '../inventory/category.dart';
 import '../inventory/product.dart';
 import 'purchase_repository.dart';
@@ -26,7 +27,8 @@ class PurchaseEntryScreen extends ConsumerStatefulWidget {
   const PurchaseEntryScreen({super.key});
 
   @override
-  ConsumerState<PurchaseEntryScreen> createState() => _PurchaseEntryScreenState();
+  ConsumerState<PurchaseEntryScreen> createState() =>
+      _PurchaseEntryScreenState();
 }
 
 class _PurchaseEntryScreenState extends ConsumerState<PurchaseEntryScreen> {
@@ -45,7 +47,10 @@ class _PurchaseEntryScreenState extends ConsumerState<PurchaseEntryScreen> {
   void initState() {
     super.initState();
     _load();
-    _searchController.addListener(() => setState(() => _query = _searchController.text.trim().toLowerCase()));
+    _searchController.addListener(
+      () =>
+          setState(() => _query = _searchController.text.trim().toLowerCase()),
+    );
   }
 
   @override
@@ -60,7 +65,10 @@ class _PurchaseEntryScreenState extends ConsumerState<PurchaseEntryScreen> {
     final productRepo = await ref.read(productRepositoryProvider.future);
     final categoryRepo = await ref.read(categoryRepositoryProvider.future);
 
-    final suppliers = await partyRepo.list(businessId: businessId, type: PartyType.supplier);
+    final suppliers = await partyRepo.list(
+      businessId: businessId,
+      type: PartyType.supplier,
+    );
     final products = await productRepo.list(businessId: businessId);
     final categories = await categoryRepo.list(businessId: businessId);
 
@@ -76,15 +84,21 @@ class _PurchaseEntryScreenState extends ConsumerState<PurchaseEntryScreen> {
   List<Product> get _filteredProducts {
     final all = _allProducts ?? const [];
     return all.where((p) {
-      final matchesQuery = _query.isEmpty || p.name.toLowerCase().contains(_query) || p.sku.toLowerCase().contains(_query);
-      final matchesCategory = _categoryFilter == null || p.categoryUuid == _categoryFilter;
+      final matchesQuery =
+          _query.isEmpty ||
+          p.name.toLowerCase().contains(_query) ||
+          p.sku.toLowerCase().contains(_query);
+      final matchesCategory =
+          _categoryFilter == null || p.categoryUuid == _categoryFilter;
       return matchesQuery && matchesCategory;
     }).toList();
   }
 
   void _addToCart(Product product) {
     setState(() {
-      final existingIndex = _cart.indexWhere((l) => l.product.uuid == product.uuid);
+      final existingIndex = _cart.indexWhere(
+        (l) => l.product.uuid == product.uuid,
+      );
       if (existingIndex != -1) {
         _cart[existingIndex].quantity++;
       } else {
@@ -99,7 +113,9 @@ class _PurchaseEntryScreenState extends ConsumerState<PurchaseEntryScreen> {
   Future<void> _submit() async {
     if (_cart.isEmpty || _selectedSupplier == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Select a supplier and add at least one line')),
+        const SnackBar(
+          content: Text('Select a supplier and add at least one line'),
+        ),
       );
       return;
     }
@@ -114,15 +130,19 @@ class _PurchaseEntryScreenState extends ConsumerState<PurchaseEntryScreen> {
         createdBy: currentUser,
         deviceId: currentDeviceId,
         lineInputs: _cart
-            .map((l) => PurchaseLineInput(
-                  productUuid: l.product.uuid,
-                  quantity: l.quantity,
-                  unitCostMinorUnits: l.unitCostMinorUnits,
-                ))
+            .map(
+              (l) => PurchaseLineInput(
+                productUuid: l.product.uuid,
+                quantity: l.quantity,
+                unitCostMinorUnits: l.unitCostMinorUnits,
+              ),
+            )
             .toList(),
       );
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Purchase saved')));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Purchase saved')));
         setState(() {
           _cart.clear();
           _selectedSupplier = null;
@@ -131,7 +151,9 @@ class _PurchaseEntryScreenState extends ConsumerState<PurchaseEntryScreen> {
       await _load(); // refresh stock quantities shown in the product grid
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('$e')));
       }
     } finally {
       if (mounted) setState(() => _submitting = false);
@@ -140,28 +162,45 @@ class _PurchaseEntryScreenState extends ConsumerState<PurchaseEntryScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final isReadOnly = ref.watch(isReadOnlyProvider).value ?? false;
     return Scaffold(
       appBar: AppBar(title: const Text('New Purchase')),
-      body: Row(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
+      body: Column(
         children: [
-          Expanded(flex: 3, child: _buildProductBrowser(context)),
-          Container(width: 1, color: Theme.of(context).dividerColor),
-          SizedBox(width: 380, child: _buildCartAndCheckout(context)),
+          if (isReadOnly) const ReadOnlyBanner(),
+          Expanded(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Expanded(flex: 3, child: _buildProductBrowser(context)),
+                Container(width: 1, color: Theme.of(context).dividerColor),
+                SizedBox(
+                  width: 380,
+                  child: _buildCartAndCheckout(context, isReadOnly),
+                ),
+              ],
+            ),
+          ),
         ],
       ),
     );
   }
 
   Widget _buildProductBrowser(BuildContext context) {
-    if (_allProducts == null) return const Center(child: CircularProgressIndicator());
+    if (_allProducts == null) {
+      return const Center(child: CircularProgressIndicator());
+    }
 
     if (_allProducts!.isEmpty) {
       return Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.inventory_2_outlined, size: 40, color: Colors.grey.shade400),
+            Icon(
+              Icons.inventory_2_outlined,
+              size: 40,
+              color: Colors.grey.shade400,
+            ),
             const SizedBox(height: AppSpacing.md),
             const Text('No products yet — add one from the Products screen.'),
           ],
@@ -199,14 +238,17 @@ class _PurchaseEntryScreenState extends ConsumerState<PurchaseEntryScreen> {
                       onSelected: (_) => setState(() => _categoryFilter = null),
                     ),
                   ),
-                  ..._categoriesByUuid.values.map((c) => Padding(
-                        padding: const EdgeInsets.only(right: AppSpacing.sm),
-                        child: ChoiceChip(
-                          label: Text(c.name),
-                          selected: _categoryFilter == c.uuid,
-                          onSelected: (_) => setState(() => _categoryFilter = c.uuid),
-                        ),
-                      )),
+                  ..._categoriesByUuid.values.map(
+                    (c) => Padding(
+                      padding: const EdgeInsets.only(right: AppSpacing.sm),
+                      child: ChoiceChip(
+                        label: Text(c.name),
+                        selected: _categoryFilter == c.uuid,
+                        onSelected: (_) =>
+                            setState(() => _categoryFilter = c.uuid),
+                      ),
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -214,10 +256,17 @@ class _PurchaseEntryScreenState extends ConsumerState<PurchaseEntryScreen> {
           const SizedBox(height: AppSpacing.lg),
           Expanded(
             child: products.isEmpty
-                ? Center(child: Text('No matching products', style: TextStyle(color: Colors.grey.shade600)))
+                ? Center(
+                    child: Text(
+                      'No matching products',
+                      style: TextStyle(color: Colors.grey.shade600),
+                    ),
+                  )
                 : LayoutBuilder(
                     builder: (context, constraints) {
-                      final columns = (constraints.maxWidth / 220).floor().clamp(1, 6);
+                      final columns = (constraints.maxWidth / 220)
+                          .floor()
+                          .clamp(1, 6);
                       return GridView.builder(
                         gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                           crossAxisCount: columns,
@@ -226,7 +275,10 @@ class _PurchaseEntryScreenState extends ConsumerState<PurchaseEntryScreen> {
                           childAspectRatio: 1.3,
                         ),
                         itemCount: products.length,
-                        itemBuilder: (context, index) => _ProductTile(product: products[index], onTap: _addToCart),
+                        itemBuilder: (context, index) => _ProductTile(
+                          product: products[index],
+                          onTap: _addToCart,
+                        ),
                       );
                     },
                   ),
@@ -236,15 +288,27 @@ class _PurchaseEntryScreenState extends ConsumerState<PurchaseEntryScreen> {
     );
   }
 
-  Widget _buildCartAndCheckout(BuildContext context) {
+  Widget _buildCartAndCheckout(BuildContext context, bool isReadOnly) {
     return Container(
-      color: Theme.of(context).brightness == Brightness.dark ? AppColors.darkSurface : AppColors.background,
+      color: Theme.of(context).brightness == Brightness.dark
+          ? AppColors.darkSurface
+          : AppColors.background,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(AppSpacing.lg, AppSpacing.lg, AppSpacing.lg, 0),
-            child: Text('Cart', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
+            padding: const EdgeInsets.fromLTRB(
+              AppSpacing.lg,
+              AppSpacing.lg,
+              AppSpacing.lg,
+              0,
+            ),
+            child: Text(
+              'Cart',
+              style: Theme.of(
+                context,
+              ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+            ),
           ),
           Expanded(
             child: _cart.isEmpty
@@ -252,31 +316,50 @@ class _PurchaseEntryScreenState extends ConsumerState<PurchaseEntryScreen> {
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Icon(Icons.shopping_cart_outlined, size: 40, color: Colors.grey.shade400),
+                        Icon(
+                          Icons.shopping_cart_outlined,
+                          size: 40,
+                          color: Colors.grey.shade400,
+                        ),
                         const SizedBox(height: AppSpacing.md),
-                        Text('Tap a product to add it', style: TextStyle(color: Colors.grey.shade600)),
+                        Text(
+                          'Tap a product to add it',
+                          style: TextStyle(color: Colors.grey.shade600),
+                        ),
                       ],
                     ),
                   )
                 : ListView.separated(
                     padding: const EdgeInsets.all(AppSpacing.lg),
                     itemCount: _cart.length,
-                    separatorBuilder: (_, _) => const SizedBox(height: AppSpacing.sm),
+                    separatorBuilder: (_, _) =>
+                        const SizedBox(height: AppSpacing.sm),
                     itemBuilder: (context, index) {
                       final line = _cart[index];
                       return Card(
                         child: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg, vertical: AppSpacing.sm),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: AppSpacing.lg,
+                            vertical: AppSpacing.sm,
+                          ),
                           child: Row(
                             children: [
                               Expanded(
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    Text(line.product.name, style: const TextStyle(fontWeight: FontWeight.w600)),
+                                    Text(
+                                      line.product.name,
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
                                     Text(
                                       '${_money(line.unitCostMinorUnits)} each',
-                                      style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
+                                      style: TextStyle(
+                                        color: Colors.grey.shade600,
+                                        fontSize: 12,
+                                      ),
                                     ),
                                   ],
                                 ),
@@ -287,7 +370,8 @@ class _PurchaseEntryScreenState extends ConsumerState<PurchaseEntryScreen> {
                                   line.quantity--;
                                   if (line.quantity <= 0) _cart.removeAt(index);
                                 }),
-                                onIncrement: () => setState(() => line.quantity++),
+                                onIncrement: () =>
+                                    setState(() => line.quantity++),
                               ),
                               const SizedBox(width: AppSpacing.md),
                               SizedBox(
@@ -295,7 +379,9 @@ class _PurchaseEntryScreenState extends ConsumerState<PurchaseEntryScreen> {
                                 child: Text(
                                   _money(line.totalMinorUnits),
                                   textAlign: TextAlign.right,
-                                  style: const TextStyle(fontWeight: FontWeight.w700),
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w700,
+                                  ),
                                 ),
                               ),
                             ],
@@ -306,7 +392,11 @@ class _PurchaseEntryScreenState extends ConsumerState<PurchaseEntryScreen> {
                   ),
           ),
           Container(
-            decoration: BoxDecoration(border: Border(top: BorderSide(color: Theme.of(context).dividerColor))),
+            decoration: BoxDecoration(
+              border: Border(
+                top: BorderSide(color: Theme.of(context).dividerColor),
+              ),
+            ),
             padding: const EdgeInsets.all(AppSpacing.lg),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -314,14 +404,21 @@ class _PurchaseEntryScreenState extends ConsumerState<PurchaseEntryScreen> {
                 DropdownButtonFormField<Party>(
                   initialValue: _selectedSupplier,
                   decoration: const InputDecoration(labelText: 'Supplier'),
-                  items: _suppliers.map((s) => DropdownMenuItem(value: s, child: Text(s.name))).toList(),
+                  items: _suppliers
+                      .map(
+                        (s) => DropdownMenuItem(value: s, child: Text(s.name)),
+                      )
+                      .toList(),
                   onChanged: (v) => setState(() => _selectedSupplier = v),
                 ),
                 const SizedBox(height: AppSpacing.lg),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text('Items', style: TextStyle(color: Colors.grey.shade600)),
+                    Text(
+                      'Items',
+                      style: TextStyle(color: Colors.grey.shade600),
+                    ),
                     Text('$_itemCount'),
                   ],
                 ),
@@ -331,19 +428,39 @@ class _PurchaseEntryScreenState extends ConsumerState<PurchaseEntryScreen> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    const Text('Total', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
+                    const Text(
+                      'Total',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 16,
+                      ),
+                    ),
                     Text(
                       _money(_total),
-                      style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w700),
+                      style: Theme.of(context).textTheme.headlineSmall
+                          ?.copyWith(fontWeight: FontWeight.w700),
                     ),
                   ],
                 ),
                 const SizedBox(height: AppSpacing.lg),
                 FilledButton(
-                  onPressed: (_submitting || _cart.isEmpty) ? null : _submit,
-                  style: FilledButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: AppSpacing.lg)),
+                  onPressed: (_submitting || _cart.isEmpty || isReadOnly)
+                      ? null
+                      : _submit,
+                  style: FilledButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(
+                      vertical: AppSpacing.lg,
+                    ),
+                  ),
                   child: _submitting
-                      ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
                       : const Text('Save Purchase'),
                 ),
               ],
@@ -379,7 +496,11 @@ class _ProductTile extends StatelessWidget {
                   color: AppColors.accent.withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(8),
                 ),
-                child: const Icon(Icons.inventory_2_outlined, color: AppColors.accent, size: 18),
+                child: const Icon(
+                  Icons.inventory_2_outlined,
+                  color: AppColors.accent,
+                  size: 18,
+                ),
               ),
               const Spacer(),
               Text(
@@ -389,9 +510,15 @@ class _ProductTile extends StatelessWidget {
                 style: const TextStyle(fontWeight: FontWeight.w600),
               ),
               const SizedBox(height: AppSpacing.xs),
-              Text('Cost: ${_money(product.costPriceMinorUnits)}', style: const TextStyle(fontWeight: FontWeight.w700)),
+              Text(
+                'Cost: ${_money(product.costPriceMinorUnits)}',
+                style: const TextStyle(fontWeight: FontWeight.w700),
+              ),
               const SizedBox(height: AppSpacing.xs),
-              Text('Stock: ${product.stockQuantity}', style: TextStyle(fontSize: 11, color: Colors.grey.shade600)),
+              Text(
+                'Stock: ${product.stockQuantity}',
+                style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+              ),
             ],
           ),
         ),

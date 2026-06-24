@@ -155,6 +155,22 @@ final accessibleBusinessesProvider = FutureProvider<List<Business>>((ref) async 
   return all.where((b) => profile.businessAccess.containsKey(b.uuid)).toList();
 });
 
+/// True if the signed-in user holds `readOnlyAuditor` on the active
+/// business (and isn't the Super Admin, who always bypasses role
+/// checks). The handful of screens that actually post a JournalEntry
+/// (Sales, Purchases, Payroll, Fixed Assets depreciation, Approvals)
+/// check this to disable their one ledger-affecting action — the rest
+/// of the read-only enforcement is the nav filtering in app.dart, which
+/// keeps an auditor out of those screens in the first place; this is
+/// the backstop for the few financial actions that live on shared
+/// screens an auditor might still reach a Save/Approve button on.
+final isReadOnlyProvider = FutureProvider<bool>((ref) async {
+  final profile = await ref.watch(currentUserProfileProvider.future);
+  if (profile == null || profile.isSuperAdmin) return false;
+  final businessId = await ref.watch(currentBusinessIdProvider.future);
+  return profile.businessAccess[businessId] == 'readOnlyAuditor';
+});
+
 final firestoreSyncServiceProvider = FutureProvider<FirestoreSyncService>((ref) async {
   final db = await ref.watch(databaseProvider.future);
   final firestore = ref.watch(firestoreProvider);
