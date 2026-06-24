@@ -5,6 +5,7 @@ import '../../../core/party/party.dart';
 import '../../../core/system/providers.dart';
 import '../../../shared/theme/app_theme.dart';
 import '../../../shared/widgets/quantity_stepper.dart';
+import '../inventory/category.dart';
 import '../inventory/product.dart';
 import 'purchase_repository.dart';
 
@@ -16,9 +17,11 @@ class _CartLine {
   int get totalMinorUnits => quantity * unitCostMinorUnits;
 }
 
-/// Same two-pane POS layout as SaleEntryScreen (search/cart left,
-/// sticky checkout right) for visual and behavioral consistency between
-/// the two cart-style entry screens.
+/// Same browsable product-grid layout as SaleEntryScreen (search +
+/// category chips, grid on the left, cart/checkout on the right) for
+/// visual and behavioral consistency between the two cart-style entry
+/// screens — previously this still used the older search-dropdown-only
+/// pattern after Sales had already moved on.
 class PurchaseEntryScreen extends ConsumerStatefulWidget {
   const PurchaseEntryScreen({super.key});
 
@@ -28,7 +31,10 @@ class PurchaseEntryScreen extends ConsumerStatefulWidget {
 
 class _PurchaseEntryScreenState extends ConsumerState<PurchaseEntryScreen> {
   final _searchController = TextEditingController();
-  List<Product> _searchResults = [];
+  List<Product>? _allProducts;
+  Map<String, Category> _categoriesByUuid = {};
+  String? _categoryFilter;
+  String _query = '';
   final List<_CartLine> _cart = [];
 
   List<Party> _suppliers = [];
@@ -38,25 +44,42 @@ class _PurchaseEntryScreenState extends ConsumerState<PurchaseEntryScreen> {
   @override
   void initState() {
     super.initState();
-    _loadSuppliers();
+    _load();
+    _searchController.addListener(() => setState(() => _query = _searchController.text.trim().toLowerCase()));
   }
 
-  Future<void> _loadSuppliers() async {
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _load() async {
     final businessId = await ref.read(currentBusinessIdProvider.future);
-    final repo = await ref.read(partyRepositoryProvider.future);
-    final suppliers = await repo.list(businessId: businessId, type: PartyType.supplier);
-    if (mounted) setState(() => _suppliers = suppliers);
-  }
+    final partyRepo = await ref.read(partyRepositoryProvider.future);
+    final productRepo = await ref.read(productRepositoryProvider.future);
+    final categoryRepo = await ref.read(categoryRepositoryProvider.future);
 
-  Future<void> _search(String query) async {
-    if (query.isEmpty) {
-      setState(() => _searchResults = []);
-      return;
+    final suppliers = await partyRepo.list(businessId: businessId, type: PartyType.supplier);
+    final products = await productRepo.list(businessId: businessId);
+    final categories = await categoryRepo.list(businessId: businessId);
+
+    if (mounted) {
+      setState(() {
+        _suppliers = suppliers;
+        _allProducts = products;
+        _categoriesByUuid = {for (final c in categories) c.uuid: c};
+      });
     }
-    final businessId = await ref.read(currentBusinessIdProvider.future);
-    final repo = await ref.read(productRepositoryProvider.future);
-    final results = await repo.search(businessId: businessId, query: query);
-    if (mounted) setState(() => _searchResults = results);
+  }
+
+  List<Product> get _filteredProducts {
+    final all = _allProducts ?? const [];
+    return all.where((p) {
+      final matchesQuery = _query.isEmpty || p.name.toLowerCase().contains(_query) || p.sku.toLowerCase().contains(_query);
+      final matchesCategory = _categoryFilter == null || p.categoryUuid == _categoryFilter;
+      return matchesQuery && matchesCategory;
+    }).toList();
   }
 
   void _addToCart(Product product) {
@@ -67,8 +90,6 @@ class _PurchaseEntryScreenState extends ConsumerState<PurchaseEntryScreen> {
       } else {
         _cart.add(_CartLine(product, 1, product.costPriceMinorUnits));
       }
-      _searchController.clear();
-      _searchResults = [];
     });
   }
 
@@ -107,6 +128,7 @@ class _PurchaseEntryScreenState extends ConsumerState<PurchaseEntryScreen> {
           _selectedSupplier = null;
         });
       }
+      await _load(); // refresh stock quantities shown in the product grid
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
@@ -123,61 +145,107 @@ class _PurchaseEntryScreenState extends ConsumerState<PurchaseEntryScreen> {
       body: Row(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Expanded(flex: 3, child: _buildCartPane(context)),
+          Expanded(flex: 3, child: _buildProductBrowser(context)),
           Container(width: 1, color: Theme.of(context).dividerColor),
-          SizedBox(width: 340, child: _buildCheckoutPane(context)),
+          SizedBox(width: 380, child: _buildCartAndCheckout(context)),
         ],
       ),
     );
   }
 
-  Widget _buildCartPane(BuildContext context) {
+  Widget _buildProductBrowser(BuildContext context) {
+    if (_allProducts == null) return const Center(child: CircularProgressIndicator());
+
+    if (_allProducts!.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.inventory_2_outlined, size: 40, color: Colors.grey.shade400),
+            const SizedBox(height: AppSpacing.md),
+            const Text('No products yet — add one from the Products screen.'),
+          ],
+        ),
+      );
+    }
+
+    final products = _filteredProducts;
+
     return Padding(
       padding: const EdgeInsets.all(AppSpacing.xl),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Stack(
-            children: [
-              TextField(
-                controller: _searchController,
-                autofocus: true,
-                decoration: const InputDecoration(
-                  labelText: 'Search product...',
-                  prefixIcon: Icon(Icons.search),
-                ),
-                onChanged: _search,
-              ),
-              if (_searchResults.isNotEmpty)
-                Positioned(
-                  top: 58,
-                  left: 0,
-                  right: 0,
-                  child: Card(
-                    elevation: 4,
-                    child: ConstrainedBox(
-                      constraints: const BoxConstraints(maxHeight: 260),
-                      child: ListView.separated(
-                        shrinkWrap: true,
-                        padding: EdgeInsets.zero,
-                        itemCount: _searchResults.length,
-                        separatorBuilder: (_, _) => const Divider(height: 1),
-                        itemBuilder: (context, index) {
-                          final p = _searchResults[index];
-                          return ListTile(
-                            title: Text(p.name),
-                            subtitle: Text('Cost: ${_money(p.costPriceMinorUnits)}'),
-                            trailing: Chip(label: Text('Stock: ${p.stockQuantity}'), side: BorderSide.none),
-                            onTap: () => _addToCart(p),
-                          );
-                        },
-                      ),
+          TextField(
+            controller: _searchController,
+            autofocus: true,
+            decoration: const InputDecoration(
+              labelText: 'Search product...',
+              prefixIcon: Icon(Icons.search),
+            ),
+          ),
+          if (_categoriesByUuid.isNotEmpty) ...[
+            const SizedBox(height: AppSpacing.md),
+            SizedBox(
+              height: 32,
+              child: ListView(
+                scrollDirection: Axis.horizontal,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.only(right: AppSpacing.sm),
+                    child: ChoiceChip(
+                      label: const Text('All'),
+                      selected: _categoryFilter == null,
+                      onSelected: (_) => setState(() => _categoryFilter = null),
                     ),
                   ),
-                ),
-            ],
-          ),
+                  ..._categoriesByUuid.values.map((c) => Padding(
+                        padding: const EdgeInsets.only(right: AppSpacing.sm),
+                        child: ChoiceChip(
+                          label: Text(c.name),
+                          selected: _categoryFilter == c.uuid,
+                          onSelected: (_) => setState(() => _categoryFilter = c.uuid),
+                        ),
+                      )),
+                ],
+              ),
+            ),
+          ],
           const SizedBox(height: AppSpacing.lg),
+          Expanded(
+            child: products.isEmpty
+                ? Center(child: Text('No matching products', style: TextStyle(color: Colors.grey.shade600)))
+                : LayoutBuilder(
+                    builder: (context, constraints) {
+                      final columns = (constraints.maxWidth / 220).floor().clamp(1, 6);
+                      return GridView.builder(
+                        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                          crossAxisCount: columns,
+                          mainAxisSpacing: AppSpacing.md,
+                          crossAxisSpacing: AppSpacing.md,
+                          childAspectRatio: 1.3,
+                        ),
+                        itemCount: products.length,
+                        itemBuilder: (context, index) => _ProductTile(product: products[index], onTap: _addToCart),
+                      );
+                    },
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCartAndCheckout(BuildContext context) {
+    return Container(
+      color: Theme.of(context).brightness == Brightness.dark ? AppColors.darkSurface : AppColors.background,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(AppSpacing.lg, AppSpacing.lg, AppSpacing.lg, 0),
+            child: Text('Cart', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
+          ),
           Expanded(
             child: _cart.isEmpty
                 ? Center(
@@ -186,11 +254,12 @@ class _PurchaseEntryScreenState extends ConsumerState<PurchaseEntryScreen> {
                       children: [
                         Icon(Icons.shopping_cart_outlined, size: 40, color: Colors.grey.shade400),
                         const SizedBox(height: AppSpacing.md),
-                        Text('Search a product above to add a line', style: TextStyle(color: Colors.grey.shade600)),
+                        Text('Tap a product to add it', style: TextStyle(color: Colors.grey.shade600)),
                       ],
                     ),
                   )
                 : ListView.separated(
+                    padding: const EdgeInsets.all(AppSpacing.lg),
                     itemCount: _cart.length,
                     separatorBuilder: (_, _) => const SizedBox(height: AppSpacing.sm),
                     itemBuilder: (context, index) {
@@ -220,9 +289,9 @@ class _PurchaseEntryScreenState extends ConsumerState<PurchaseEntryScreen> {
                                 }),
                                 onIncrement: () => setState(() => line.quantity++),
                               ),
-                              const SizedBox(width: AppSpacing.lg),
+                              const SizedBox(width: AppSpacing.md),
                               SizedBox(
-                                width: 80,
+                                width: 72,
                                 child: Text(
                                   _money(line.totalMinorUnits),
                                   textAlign: TextAlign.right,
@@ -236,56 +305,96 @@ class _PurchaseEntryScreenState extends ConsumerState<PurchaseEntryScreen> {
                     },
                   ),
           ),
+          Container(
+            decoration: BoxDecoration(border: Border(top: BorderSide(color: Theme.of(context).dividerColor))),
+            padding: const EdgeInsets.all(AppSpacing.lg),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                DropdownButtonFormField<Party>(
+                  initialValue: _selectedSupplier,
+                  decoration: const InputDecoration(labelText: 'Supplier'),
+                  items: _suppliers.map((s) => DropdownMenuItem(value: s, child: Text(s.name))).toList(),
+                  onChanged: (v) => setState(() => _selectedSupplier = v),
+                ),
+                const SizedBox(height: AppSpacing.lg),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text('Items', style: TextStyle(color: Colors.grey.shade600)),
+                    Text('$_itemCount'),
+                  ],
+                ),
+                const SizedBox(height: AppSpacing.sm),
+                const Divider(),
+                const SizedBox(height: AppSpacing.sm),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text('Total', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
+                    Text(
+                      _money(_total),
+                      style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w700),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: AppSpacing.lg),
+                FilledButton(
+                  onPressed: (_submitting || _cart.isEmpty) ? null : _submit,
+                  style: FilledButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: AppSpacing.lg)),
+                  child: _submitting
+                      ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                      : const Text('Save Purchase'),
+                ),
+              ],
+            ),
+          ),
         ],
       ),
     );
   }
+}
 
-  Widget _buildCheckoutPane(BuildContext context) {
-    return Container(
-      color: Theme.of(context).brightness == Brightness.dark ? AppColors.darkSurface : AppColors.background,
-      padding: const EdgeInsets.all(AppSpacing.xl),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Text('Purchase Summary', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
-          const SizedBox(height: AppSpacing.lg),
-          DropdownButtonFormField<Party>(
-            initialValue: _selectedSupplier,
-            decoration: const InputDecoration(labelText: 'Supplier'),
-            items: _suppliers.map((s) => DropdownMenuItem(value: s, child: Text(s.name))).toList(),
-            onChanged: (v) => setState(() => _selectedSupplier = v),
-          ),
-          const Spacer(),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+class _ProductTile extends StatelessWidget {
+  const _ProductTile({required this.product, required this.onTap});
+
+  final Product product;
+  final void Function(Product) onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: InkWell(
+        borderRadius: BorderRadius.circular(10),
+        onTap: () => onTap(product),
+        child: Padding(
+          padding: const EdgeInsets.all(AppSpacing.md),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('Items', style: TextStyle(color: Colors.grey.shade600)),
-              Text('$_itemCount'),
-            ],
-          ),
-          const SizedBox(height: AppSpacing.sm),
-          const Divider(),
-          const SizedBox(height: AppSpacing.sm),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Text('Total', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
-              Text(
-                _money(_total),
-                style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w700),
+              Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: AppColors.accent.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(Icons.inventory_2_outlined, color: AppColors.accent, size: 18),
               ),
+              const Spacer(),
+              Text(
+                product.name,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontWeight: FontWeight.w600),
+              ),
+              const SizedBox(height: AppSpacing.xs),
+              Text('Cost: ${_money(product.costPriceMinorUnits)}', style: const TextStyle(fontWeight: FontWeight.w700)),
+              const SizedBox(height: AppSpacing.xs),
+              Text('Stock: ${product.stockQuantity}', style: TextStyle(fontSize: 11, color: Colors.grey.shade600)),
             ],
           ),
-          const SizedBox(height: AppSpacing.lg),
-          FilledButton(
-            onPressed: (_submitting || _cart.isEmpty) ? null : _submit,
-            style: FilledButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: AppSpacing.lg)),
-            child: _submitting
-                ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                : const Text('Save Purchase'),
-          ),
-        ],
+        ),
       ),
     );
   }
