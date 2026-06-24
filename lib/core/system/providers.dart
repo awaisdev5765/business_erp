@@ -82,7 +82,7 @@ final currentBusinessIdProvider = FutureProvider<String>((ref) async {
   // seeding a generic "My Spare Parts Shop" on first sign-in was wrong:
   // it happened for *any* signed-in user, staff included, before they'd
   // even seen the app).
-  final rows = await db.query(Business.tableName, limit: 1);
+  final rows = await db.query(Business.tableName, where: 'is_active = 1', limit: 1);
   if (rows.isNotEmpty) {
     final businessId = rows.first['uuid'] as String;
     await seedChartOfAccounts(db, businessId);

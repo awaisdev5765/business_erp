@@ -231,6 +231,11 @@ class _StaffManagementScreenState extends ConsumerState<StaffManagementScreen> {
             ],
           ),
           actions: [
+            TextButton(
+              style: TextButton.styleFrom(foregroundColor: Theme.of(context).colorScheme.error),
+              onPressed: () => Navigator.pop(context, 'deactivate'),
+              child: const Text('Deactivate'),
+            ),
             TextButton(onPressed: () => Navigator.pop(context), child: const Text('Close')),
             FilledButton(
               onPressed: () => Navigator.pop(context, 'grant:$businessId:$role'),
@@ -242,8 +247,26 @@ class _StaffManagementScreenState extends ConsumerState<StaffManagementScreen> {
     );
 
     if (action == null) return;
+    if (!mounted) return;
     final profileRepo = ref.read(userProfileRepositoryProvider);
-    if (action.startsWith('revoke:')) {
+    if (action == 'deactivate') {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Deactivate Staff?'),
+          content: Text('${staff.email} will lose access to every business immediately. They can be re-granted access later.'),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+            FilledButton(
+              style: FilledButton.styleFrom(backgroundColor: Theme.of(context).colorScheme.error),
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Deactivate'),
+            ),
+          ],
+        ),
+      );
+      if (confirmed == true) await profileRepo.deactivateStaff(staff.uid);
+    } else if (action.startsWith('revoke:')) {
       await profileRepo.revokeAccess(uid: staff.uid, businessId: action.substring('revoke:'.length));
     } else if (action.startsWith('grant:')) {
       final parts = action.substring('grant:'.length).split(':');

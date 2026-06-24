@@ -37,4 +37,19 @@ class BusinessRepository {
     final rows = await db.query(Business.tableName, where: 'uuid = ?', whereArgs: [uuid], limit: 1);
     return rows.isEmpty ? null : Business.fromMap(rows.first);
   }
+
+  /// Soft-deletes a business — sets `is_active = 0` so `list()` stops
+  /// returning it (and therefore the Business Switcher/nav/Cross-
+  /// Business Dashboard), without touching its ledger data. Never a
+  /// hard delete, same append-only philosophy as Void vs. Reversal for
+  /// journal entries — an archived business's history stays queryable
+  /// by uuid if ever needed, it just stops showing up day to day.
+  Future<void> archive(String uuid) async {
+    await db.update(
+      Business.tableName,
+      {'is_active': 0, 'updated_at': DateTime.now().toIso8601String()},
+      where: 'uuid = ?',
+      whereArgs: [uuid],
+    );
+  }
 }

@@ -69,4 +69,18 @@ class UserProfileRepository {
     final docs = (await _users.get()).docs;
     return docs.map((d) => UserProfile.fromMap(d.data())).where((p) => !p.isSuperAdmin).toList();
   }
+
+  /// Clears every business grant a staff member has, in one action —
+  /// "deactivate this person." There's no way to disable their Firebase
+  /// Auth account itself client-side (that needs the Admin SDK, not
+  /// available on the free Spark plan without Cloud Functions), so this
+  /// is the practical equivalent: AppShell's access gate shows "no
+  /// business assigned" the next time they sign in, same as a brand new
+  /// account nobody's granted access to yet.
+  Future<void> deactivateStaff(String uid) async {
+    final profile = await find(uid);
+    if (profile == null) return;
+    final updated = UserProfile(uid: uid, email: profile.email, isSuperAdmin: profile.isSuperAdmin, businessAccess: const {});
+    await _users.doc(uid).set(updated.toMap());
+  }
 }

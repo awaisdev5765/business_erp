@@ -83,6 +83,39 @@ class _BusinessSwitcherScreenState extends ConsumerState<BusinessSwitcherScreen>
     if (mounted) Navigator.of(context).pop(); // back out to the now-switched app shell
   }
 
+  Future<void> _confirmArchive(Business business) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Archive Business?'),
+        content: Text(
+          '"${business.name}" will disappear from the switcher and nav for everyone. '
+          "Its ledger history isn't deleted — this can't be undone from the app, though.",
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Theme.of(context).colorScheme.error),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Archive'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    final repo = await ref.read(businessRepositoryProvider.future);
+    await repo.archive(business.uuid);
+
+    // If the archived business was the active one, fall back to
+    // whatever's now first in the accessible list rather than leaving
+    // selectedBusinessIdProvider pointing at a now-hidden business.
+    if (ref.read(selectedBusinessIdProvider) == business.uuid || ref.read(currentBusinessIdProvider).valueOrNull == business.uuid) {
+      ref.read(selectedBusinessIdProvider.notifier).state = null;
+    }
+    await _load();
+  }
+
   @override
   Widget build(BuildContext context) {
     final businesses = _businesses;
@@ -117,7 +150,18 @@ class _BusinessSwitcherScreenState extends ConsumerState<BusinessSwitcherScreen>
                   leading: Icon(_iconFor(business.type), color: isActive ? Theme.of(context).colorScheme.primary : null),
                   title: Text(business.name),
                   subtitle: Text(_labelFor(business.type)),
-                  trailing: isActive ? const Icon(Icons.check_circle, color: Colors.green) : null,
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (isActive) const Icon(Icons.check_circle, color: Colors.green),
+                      if (isSuperAdmin)
+                        IconButton(
+                          icon: const Icon(Icons.archive_outlined, size: 18),
+                          tooltip: 'Archive',
+                          onPressed: () => _confirmArchive(business),
+                        ),
+                    ],
+                  ),
                   selected: isActive,
                   onTap: () {
                     ref.read(selectedBusinessIdProvider.notifier).state = business.uuid;
