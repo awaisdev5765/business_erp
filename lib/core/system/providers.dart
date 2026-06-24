@@ -34,6 +34,7 @@ import '../transaction/salary_repository.dart';
 import '../../features/fishery/catch_repository.dart';
 import '../../features/fishery/fish_sale_repository.dart';
 import '../../features/fishery/trip_profit_service.dart';
+import '../../features/spare_parts/inventory/brand_repository.dart';
 import '../../features/spare_parts/inventory/category_repository.dart';
 import '../../features/spare_parts/inventory/product_repository.dart';
 import '../../features/spare_parts/purchases/purchase_repository.dart';
@@ -267,6 +268,11 @@ final productRepositoryProvider = FutureProvider<ProductRepository>((ref) async 
 final categoryRepositoryProvider = FutureProvider<CategoryRepository>((ref) async {
   final db = await ref.watch(databaseProvider.future);
   return CategoryRepository(db);
+});
+
+final brandRepositoryProvider = FutureProvider<BrandRepository>((ref) async {
+  final db = await ref.watch(databaseProvider.future);
+  return BrandRepository(db);
 });
 
 final partyRepositoryProvider = FutureProvider<PartyRepository>((ref) async {

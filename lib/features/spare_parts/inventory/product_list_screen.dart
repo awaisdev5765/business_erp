@@ -16,6 +16,7 @@ class ProductListScreen extends ConsumerStatefulWidget {
 class _ProductListScreenState extends ConsumerState<ProductListScreen> {
   List<Product>? _products;
   Map<String, Category> _categoriesByUuid = {};
+  Map<String, Brand> _brandsByUuid = {};
   String? _categoryFilter; // null = all categories
   final _searchController = TextEditingController();
   String _query = '';
@@ -40,12 +41,15 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
     final businessId = await ref.read(currentBusinessIdProvider.future);
     final repo = await ref.read(productRepositoryProvider.future);
     final categoryRepo = await ref.read(categoryRepositoryProvider.future);
+    final brandRepo = await ref.read(brandRepositoryProvider.future);
     final products = await repo.list(businessId: businessId);
     final categories = await categoryRepo.list(businessId: businessId);
+    final brands = await brandRepo.list(businessId: businessId);
     if (mounted) {
       setState(() {
         _products = products;
         _categoriesByUuid = {for (final c in categories) c.uuid: c};
+        _brandsByUuid = {for (final b in brands) b.uuid: b};
       });
     }
   }
@@ -108,6 +112,65 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
     return picked;
   }
 
+  /// Same pattern as [_pickOrCreateCategory] — Brand existed in the
+  /// schema since Phase 1 (Product.brandUuid) right alongside Category,
+  /// but only Category ever got a picker.
+  Future<Brand?> _pickOrCreateBrand() async {
+    final businessId = await ref.read(currentBusinessIdProvider.future);
+    final brandRepo = await ref.read(brandRepositoryProvider.future);
+    final brands = await brandRepo.list(businessId: businessId);
+
+    Brand? selected;
+    final newNameController = TextEditingController();
+
+    if (!mounted) return null;
+    final picked = await showDialog<Brand?>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Brand'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (brands.isNotEmpty)
+                DropdownButtonFormField<Brand?>(
+                  initialValue: selected,
+                  decoration: const InputDecoration(labelText: 'Existing brand'),
+                  items: [
+                    const DropdownMenuItem<Brand?>(value: null, child: Text('None')),
+                    ...brands.map((b) => DropdownMenuItem<Brand?>(value: b, child: Text(b.name))),
+                  ],
+                  onChanged: (v) => setDialogState(() => selected = v),
+                ),
+              const SizedBox(height: AppSpacing.md),
+              TextField(
+                controller: newNameController,
+                decoration: const InputDecoration(labelText: 'Or add a new brand'),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context, null), child: const Text('Cancel')),
+            FilledButton(
+              onPressed: () async {
+                if (newNameController.text.isNotEmpty) {
+                  final created = await brandRepo.create(businessId: businessId, name: newNameController.text);
+                  if (!context.mounted) return;
+                  Navigator.pop(context, created);
+                } else {
+                  Navigator.pop(context, selected);
+                }
+              },
+              child: const Text('Use'),
+            ),
+          ],
+        ),
+      ),
+    );
+    return picked;
+  }
+
   Future<void> _showAddDialog() async {
     final skuController = TextEditingController();
     final nameController = TextEditingController();
@@ -115,6 +178,7 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
     final priceController = TextEditingController();
     final stockController = TextEditingController(text: '0');
     Category? category;
+    Brand? brand;
 
     final saved = await showDialog<bool>(
       context: context,
@@ -144,6 +208,15 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
                   },
                   icon: const Icon(Icons.sell_outlined, size: 16),
                   label: Text(category?.name ?? 'Category (optional)'),
+                ),
+                const SizedBox(height: AppSpacing.md),
+                OutlinedButton.icon(
+                  onPressed: () async {
+                    final picked = await _pickOrCreateBrand();
+                    setDialogState(() => brand = picked);
+                  },
+                  icon: const Icon(Icons.local_offer_outlined, size: 16),
+                  label: Text(brand?.name ?? 'Brand (optional)'),
                 ),
                 const SizedBox(height: AppSpacing.md),
                 TextField(
@@ -190,6 +263,7 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
       sku: skuController.text,
       name: nameController.text,
       categoryUuid: category?.uuid,
+      brandUuid: brand?.uuid,
       costPriceMinorUnits: ((double.tryParse(costController.text) ?? 0) * 100)
           .round(),
       salePriceMinorUnits: ((double.tryParse(priceController.text) ?? 0) * 100)
@@ -322,6 +396,7 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
                                 subtitle: Text(
                                   'SKU: ${p.sku}'
                                   '${p.categoryUuid != null ? '  •  ${_categoriesByUuid[p.categoryUuid]?.name ?? ''}' : ''}'
+                                  '${p.brandUuid != null ? '  •  ${_brandsByUuid[p.brandUuid]?.name ?? ''}' : ''}'
                                   '  •  Cost: ${_money(p.costPriceMinorUnits)}  •  Price: ${_money(p.salePriceMinorUnits)}',
                                 ),
                                 trailing: Chip(
