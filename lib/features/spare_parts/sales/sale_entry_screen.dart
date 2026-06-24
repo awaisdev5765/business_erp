@@ -355,26 +355,27 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
                       style: TextStyle(color: Colors.grey.shade600),
                     ),
                   )
-                : LayoutBuilder(
-                    builder: (context, constraints) {
-                      final columns = (constraints.maxWidth / 220)
-                          .floor()
-                          .clamp(1, 6);
-                      return GridView.builder(
-                        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                          crossAxisCount: columns,
-                          mainAxisSpacing: AppSpacing.md,
-                          crossAxisSpacing: AppSpacing.md,
-                          childAspectRatio: 1.3,
-                        ),
-                        itemCount: products.length,
-                        itemBuilder: (context, index) => _ProductTile(
-                          product: products[index],
-                          onTap: _addToCart,
-                          currency: _currency,
-                        ),
-                      );
-                    },
+                : GridView.builder(
+                    gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+                      // A fixed tile width + a fixed tile height
+                      // (mainAxisExtent) lays out far more predictably
+                      // than crossAxisCount+childAspectRatio — the old
+                      // aspect-ratio approach (1.3, wider than tall)
+                      // squeezed a 2-line name + price + stock into a
+                      // short card, which only ever looked right by
+                      // accident depending on exactly how long a given
+                      // product's name was.
+                      maxCrossAxisExtent: 190,
+                      mainAxisSpacing: AppSpacing.md,
+                      crossAxisSpacing: AppSpacing.md,
+                      mainAxisExtent: 150,
+                    ),
+                    itemCount: products.length,
+                    itemBuilder: (context, index) => _ProductTile(
+                      product: products[index],
+                      onTap: _addToCart,
+                      currency: _currency,
+                    ),
                   ),
           ),
         ],
@@ -508,20 +509,18 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
                   onChanged: (v) =>
                       setState(() => _paymentMethod = v ?? PaymentMethod.cash),
                 ),
-                if (_paymentMethod == PaymentMethod.credit) ...[
-                  const SizedBox(height: AppSpacing.md),
-                  DropdownButtonFormField<Party>(
-                    initialValue: _selectedCustomer,
-                    decoration: const InputDecoration(labelText: 'Customer'),
-                    items: _customers
-                        .map(
-                          (c) =>
-                              DropdownMenuItem(value: c, child: Text(c.name)),
-                        )
-                        .toList(),
-                    onChanged: (v) => setState(() => _selectedCustomer = v),
+                const SizedBox(height: AppSpacing.md),
+                DropdownButtonFormField<Party?>(
+                  initialValue: _selectedCustomer,
+                  decoration: InputDecoration(
+                    labelText: _paymentMethod == PaymentMethod.credit ? 'Customer (required)' : 'Customer (optional)',
                   ),
-                ],
+                  items: [
+                    const DropdownMenuItem<Party?>(value: null, child: Text('Walk-in / none')),
+                    ..._customers.map((c) => DropdownMenuItem<Party?>(value: c, child: Text(c.name))),
+                  ],
+                  onChanged: (v) => setState(() => _selectedCustomer = v),
+                ),
                 const SizedBox(height: AppSpacing.lg),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -593,55 +592,63 @@ class _ProductTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final outOfStock = product.stockQuantity <= 0;
-    final lowStock =
-        !outOfStock && product.stockQuantity <= product.reorderLevel;
+    final lowStock = !outOfStock && product.stockQuantity <= product.reorderLevel;
 
-    return Card(
-      child: InkWell(
-        borderRadius: BorderRadius.circular(10),
-        onTap: outOfStock ? null : () => onTap(product),
-        child: Padding(
-          padding: const EdgeInsets.all(AppSpacing.md),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Container(
-                width: 36,
-                height: 36,
-                decoration: BoxDecoration(
-                  color: AppColors.accent.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(8),
+    return Opacity(
+      opacity: outOfStock ? 0.5 : 1,
+      child: Card(
+        child: InkWell(
+          borderRadius: BorderRadius.circular(10),
+          onTap: outOfStock ? null : () => onTap(product),
+          child: Padding(
+            padding: const EdgeInsets.all(AppSpacing.md),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      width: 32,
+                      height: 32,
+                      decoration: BoxDecoration(
+                        color: AppColors.accent.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Icon(Icons.inventory_2_outlined, color: AppColors.accent, size: 16),
+                    ),
+                    const Spacer(),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: (outOfStock || lowStock ? AppColors.destructive : Colors.grey.shade200).withValues(
+                          alpha: outOfStock || lowStock ? 0.12 : 1,
+                        ),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Text(
+                        outOfStock ? 'Out' : '${product.stockQuantity}',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          color: outOfStock || lowStock ? AppColors.destructive : Colors.grey.shade700,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
-                child: const Icon(
-                  Icons.inventory_2_outlined,
-                  color: AppColors.accent,
-                  size: 18,
+                Text(
+                  product.name,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
                 ),
-              ),
-              const Spacer(),
-              Text(
-                product.name,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(fontWeight: FontWeight.w600),
-              ),
-              const SizedBox(height: AppSpacing.xs),
-              Text(
-                formatMoney(product.salePriceMinorUnits, currency),
-                style: const TextStyle(fontWeight: FontWeight.w700),
-              ),
-              const SizedBox(height: AppSpacing.xs),
-              Text(
-                outOfStock ? 'Out of stock' : 'Stock: ${product.stockQuantity}',
-                style: TextStyle(
-                  fontSize: 11,
-                  color: outOfStock || lowStock
-                      ? AppColors.destructive
-                      : Colors.grey.shade600,
-                  fontWeight: outOfStock || lowStock ? FontWeight.w700 : null,
+                Text(
+                  formatMoney(product.salePriceMinorUnits, currency),
+                  style: const TextStyle(fontWeight: FontWeight.w700, color: AppColors.accent),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),

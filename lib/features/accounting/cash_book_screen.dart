@@ -123,7 +123,9 @@ class _CashBookScreenState extends ConsumerState<CashBookScreen> {
             ),
             title: Text('${row['source_type']} — ${row['description'] ?? row['source_id']}'),
             subtitle: Text(
-              '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}  •  ${row['status']}',
+              '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}'
+              '  ${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}'
+              '  •  ${row['status']}',
             ),
             trailing: Column(
               crossAxisAlignment: CrossAxisAlignment.end,
