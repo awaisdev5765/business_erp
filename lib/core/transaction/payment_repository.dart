@@ -22,6 +22,8 @@ class PaymentRepository {
     required int amountMinorUnits,
     required String createdBy,
     required String deviceId,
+    PaymentSettlementMethod method = PaymentSettlementMethod.cash,
+    String? note,
     DateTime? date,
   }) async {
     if (amountMinorUnits <= 0) {
@@ -41,6 +43,8 @@ class PaymentRepository {
       partyUuid: partyUuid,
       direction: direction,
       amountMinorUnits: amountMinorUnits,
+      method: method,
+      note: note,
       date: paymentDate,
       createdBy: createdBy,
       createdAt: DateTime.now(),
@@ -58,7 +62,7 @@ class PaymentRepository {
         createdBy: createdBy,
         deviceId: deviceId,
         date: paymentDate,
-        description: 'Payment $documentNumber',
+        description: 'Payment $documentNumber (${method.name}${note != null ? ' — $note' : ''})',
         rawLines: [
           JournalLine(
             entryUuid: '',

@@ -3,13 +3,16 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/system/providers.dart';
 import '../../core/tenant/business.dart';
+import '../../shared/currency/currency.dart';
+import '../../shared/theme/app_theme.dart';
 
 /// Lists every Business the signed-in user can access — every business
 /// for a Super Admin, only the ones granted to staff otherwise (see
 /// `accessibleBusinessesProvider`) — lets them switch the active one
-/// (sets `selectedBusinessIdProvider`), and (Super Admin only) create a
-/// new one. Replaces the "boots into one auto-seeded business"
-/// placeholder carried since Phase 1 — see PHASES.md Phase 6.
+/// (sets `selectedBusinessIdProvider`), and (Super Admin only) create or
+/// edit one's profile: name, currency, address, phone. Replaces the
+/// "boots into one auto-seeded business" placeholder carried since
+/// Phase 1 — see PHASES.md Phase 6.
 class BusinessSwitcherScreen extends ConsumerStatefulWidget {
   const BusinessSwitcherScreen({super.key});
 
@@ -31,56 +34,99 @@ class _BusinessSwitcherScreenState extends ConsumerState<BusinessSwitcherScreen>
     if (mounted) setState(() => _businesses = businesses);
   }
 
-  Future<void> _showCreateDialog() async {
-    final nameController = TextEditingController();
-    var type = BusinessType.sparePartsShop;
+  /// One dialog for both create and edit — [existing] null means create.
+  /// Type is fixed once created (changing it post-hoc would invalidate
+  /// the nav filtering and chart-of-accounts seeding that already
+  /// happened), so the Type field is disabled when editing.
+  Future<void> _showBusinessDialog({Business? existing}) async {
+    final nameController = TextEditingController(text: existing?.name);
+    final addressController = TextEditingController(text: existing?.address);
+    final phoneController = TextEditingController(text: existing?.phone);
+    var type = existing?.type ?? BusinessType.sparePartsShop;
+    var currencyCode = existing?.baseCurrency ?? kDefaultCurrencyCode;
 
     final saved = await showDialog<bool>(
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
-          title: const Text('New Business'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(controller: nameController, decoration: const InputDecoration(labelText: 'Business name')),
-              DropdownButtonFormField<BusinessType>(
-                initialValue: type,
-                decoration: const InputDecoration(labelText: 'Type'),
-                items: const [
-                  DropdownMenuItem(value: BusinessType.sparePartsShop, child: Text('Spare Parts Shop')),
-                  DropdownMenuItem(value: BusinessType.fishery, child: Text('Fishery')),
-                  DropdownMenuItem(value: BusinessType.transport, child: Text('Transport')),
-                ],
-                onChanged: (v) => setDialogState(() => type = v ?? BusinessType.sparePartsShop),
-              ),
-            ],
+          title: Text(existing == null ? 'New Business' : 'Edit Business'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                TextField(controller: nameController, decoration: const InputDecoration(labelText: 'Business name')),
+                const SizedBox(height: AppSpacing.md),
+                DropdownButtonFormField<BusinessType>(
+                  initialValue: type,
+                  decoration: const InputDecoration(labelText: 'Type'),
+                  items: const [
+                    DropdownMenuItem(value: BusinessType.sparePartsShop, child: Text('Spare Parts Shop')),
+                    DropdownMenuItem(value: BusinessType.fishery, child: Text('Fishery')),
+                    DropdownMenuItem(value: BusinessType.transport, child: Text('Transport')),
+                  ],
+                  onChanged: existing != null ? null : (v) => setDialogState(() => type = v ?? BusinessType.sparePartsShop),
+                ),
+                const SizedBox(height: AppSpacing.md),
+                DropdownButtonFormField<String>(
+                  initialValue: currencyCode,
+                  decoration: const InputDecoration(labelText: 'Currency'),
+                  items: kCurrencyOptions
+                      .map((c) => DropdownMenuItem(value: c.code, child: Text('${c.code} (${c.symbol}) — ${c.name}')))
+                      .toList(),
+                  onChanged: (v) => setDialogState(() => currencyCode = v ?? kDefaultCurrencyCode),
+                ),
+                const SizedBox(height: AppSpacing.md),
+                TextField(controller: addressController, decoration: const InputDecoration(labelText: 'Address (optional)')),
+                const SizedBox(height: AppSpacing.md),
+                TextField(controller: phoneController, decoration: const InputDecoration(labelText: 'Phone (optional)')),
+              ],
+            ),
           ),
           actions: [
             TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-            FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Create')),
+            FilledButton(onPressed: () => Navigator.pop(context, true), child: Text(existing == null ? 'Create' : 'Save')),
           ],
         ),
       ),
     );
 
     if (saved != true || nameController.text.isEmpty) return;
+    final address = addressController.text.isEmpty ? null : addressController.text;
+    final phone = phoneController.text.isEmpty ? null : phoneController.text;
 
     final repo = await ref.read(businessRepositoryProvider.future);
-    final business = await repo.create(name: nameController.text, type: type);
 
-    // Grant the creating user access so the rules-enforced Firestore
-    // side recognizes this business as theirs once it syncs — see
-    // UserProfileRepository.grantAccess().
-    final user = await ref.read(currentUserProfileProvider.future);
-    if (user != null) {
-      final profileRepo = ref.read(userProfileRepositoryProvider);
-      await profileRepo.grantAccess(uid: user.uid, businessId: business.uuid, role: 'businessAdmin');
+    if (existing == null) {
+      final business = await repo.create(
+        name: nameController.text,
+        type: type,
+        baseCurrency: currencyCode,
+        address: address,
+        phone: phone,
+      );
+
+      // Grant the creating user access so the rules-enforced Firestore
+      // side recognizes this business as theirs once it syncs — see
+      // UserProfileRepository.grantAccess().
+      final user = await ref.read(currentUserProfileProvider.future);
+      if (user != null) {
+        final profileRepo = ref.read(userProfileRepositoryProvider);
+        await profileRepo.grantAccess(uid: user.uid, businessId: business.uuid, role: 'businessAdmin');
+      }
+
+      ref.read(selectedBusinessIdProvider.notifier).state = business.uuid;
+      await _load();
+      if (mounted) Navigator.of(context).pop(); // back out to the now-switched app shell
+    } else {
+      await repo.update(existing.copyWith(
+        name: nameController.text,
+        baseCurrency: currencyCode,
+        address: address,
+        phone: phone,
+      ));
+      await _load();
     }
-
-    ref.read(selectedBusinessIdProvider.notifier).state = business.uuid;
-    await _load();
-    if (mounted) Navigator.of(context).pop(); // back out to the now-switched app shell
   }
 
   Future<void> _confirmArchive(Business business) async {
@@ -125,7 +171,7 @@ class _BusinessSwitcherScreenState extends ConsumerState<BusinessSwitcherScreen>
     return Scaffold(
       appBar: AppBar(title: const Text('Switch Business')),
       floatingActionButton: isSuperAdmin
-          ? FloatingActionButton(onPressed: _showCreateDialog, child: const Icon(Icons.add))
+          ? FloatingActionButton(onPressed: () => _showBusinessDialog(), child: const Icon(Icons.add))
           : null,
       body: businesses != null && businesses.isEmpty
           ? Center(
@@ -146,20 +192,30 @@ class _BusinessSwitcherScreenState extends ConsumerState<BusinessSwitcherScreen>
               itemBuilder: (context, index) {
                 final business = businesses[index];
                 final isActive = business.uuid == activeId;
+                final currency = kCurrencyOptions.firstWhere(
+                  (c) => c.code == business.baseCurrency,
+                  orElse: () => kCurrencyOptions.first,
+                );
                 return ListTile(
                   leading: Icon(_iconFor(business.type), color: isActive ? Theme.of(context).colorScheme.primary : null),
                   title: Text(business.name),
-                  subtitle: Text(_labelFor(business.type)),
+                  subtitle: Text('${_labelFor(business.type)}  •  ${currency.code}'),
                   trailing: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       if (isActive) const Icon(Icons.check_circle, color: Colors.green),
-                      if (isSuperAdmin)
+                      if (isSuperAdmin) ...[
+                        IconButton(
+                          icon: const Icon(Icons.edit_outlined, size: 18),
+                          tooltip: 'Edit',
+                          onPressed: () => _showBusinessDialog(existing: business),
+                        ),
                         IconButton(
                           icon: const Icon(Icons.archive_outlined, size: 18),
                           tooltip: 'Archive',
                           onPressed: () => _confirmArchive(business),
                         ),
+                      ],
                     ],
                   ),
                   selected: isActive,

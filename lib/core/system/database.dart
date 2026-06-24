@@ -56,7 +56,11 @@ class AppDatabase {
       databaseFactory = databaseFactoryFfiWeb;
       _instance = await databaseFactory.openDatabase(
         'business_erp.db',
-        options: OpenDatabaseOptions(version: 1, onCreate: (db, version) => createSchema(db)),
+        options: OpenDatabaseOptions(
+          version: _schemaVersion,
+          onCreate: (db, version) => createSchema(db),
+          onUpgrade: migrateSchema,
+        ),
       );
       return _instance!;
     }
@@ -72,11 +76,34 @@ class AppDatabase {
     _instance = await databaseFactory.openDatabase(
       dbPath,
       options: OpenDatabaseOptions(
-        version: 1,
+        version: _schemaVersion,
         onCreate: (db, version) => createSchema(db),
+        onUpgrade: migrateSchema,
       ),
     );
     return _instance!;
+  }
+}
+
+/// Bump whenever createSchema()'s table definitions change shape (new
+/// columns, new tables) — see [migrateSchema] for what each version
+/// past 1 actually does to an already-existing database. A brand new
+/// database always gets the latest shape directly via [createSchema];
+/// migrations only run for a database that already existed at a lower
+/// version (i.e. real installs with real data, not fresh ones).
+const _schemaVersion = 2;
+
+/// v1 -> v2: added Business.address/phone and Payment.method/note —
+/// see PHASES.md's post-launch "Business profile + currency, payment
+/// transparency" work. SQLite's ALTER TABLE only supports adding one
+/// column at a time with a constant DEFAULT (no backfill logic needed
+/// here — every existing row just gets the column's default).
+Future<void> migrateSchema(DatabaseExecutor db, int oldVersion, int newVersion) async {
+  if (oldVersion < 2) {
+    await db.execute('ALTER TABLE ${Business.tableName} ADD COLUMN address TEXT');
+    await db.execute('ALTER TABLE ${Business.tableName} ADD COLUMN phone TEXT');
+    await db.execute("ALTER TABLE ${Payment.tableName} ADD COLUMN method TEXT NOT NULL DEFAULT 'cash'");
+    await db.execute('ALTER TABLE ${Payment.tableName} ADD COLUMN note TEXT');
   }
 }
 

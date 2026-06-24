@@ -1,5 +1,10 @@
 enum PaymentDirection { receiveFromCustomer, payToSupplier }
 
+/// How the money actually moved — shown on the party ledger so a
+/// payment is more than just a number; "cash" was the only option that
+/// ever existed before (the field didn't exist at all).
+enum PaymentSettlementMethod { cash, bankTransfer, cheque, card, other }
+
 /// A Payment In settles a customer's receivable (Dr Cash / Cr Receivable);
 /// a Payment Out settles a supplier's payable (Dr Payable / Cr Cash). Both
 /// directions are tagged with the party's uuid so they net against the
@@ -13,6 +18,8 @@ class Payment {
     required this.partyUuid,
     required this.direction,
     required this.amountMinorUnits,
+    this.method = PaymentSettlementMethod.cash,
+    this.note,
     required this.date,
     required this.createdBy,
     required this.createdAt,
@@ -24,6 +31,14 @@ class Payment {
   final String partyUuid;
   final PaymentDirection direction;
   final int amountMinorUnits;
+
+  /// How it was paid (cash/bank/cheque/card/other).
+  final PaymentSettlementMethod method;
+
+  /// Free-text reference — cheque number, transfer ref, anything that
+  /// makes the payment traceable beyond just an amount and a date.
+  final String? note;
+
   final DateTime date;
   final String createdBy;
   final DateTime createdAt;
@@ -38,6 +53,8 @@ class Payment {
       party_uuid TEXT NOT NULL,
       direction TEXT NOT NULL,
       amount_minor_units INTEGER NOT NULL,
+      method TEXT NOT NULL DEFAULT 'cash',
+      note TEXT,
       date TEXT NOT NULL,
       created_by TEXT NOT NULL,
       created_at TEXT NOT NULL
@@ -54,6 +71,8 @@ class Payment {
         'party_uuid': partyUuid,
         'direction': direction.name,
         'amount_minor_units': amountMinorUnits,
+        'method': method.name,
+        'note': note,
         'date': date.toIso8601String(),
         'created_by': createdBy,
         'created_at': createdAt.toIso8601String(),
@@ -66,6 +85,8 @@ class Payment {
         partyUuid: map['party_uuid'] as String,
         direction: PaymentDirection.values.byName(map['direction'] as String),
         amountMinorUnits: map['amount_minor_units'] as int,
+        method: PaymentSettlementMethod.values.byName(map['method'] as String? ?? 'cash'),
+        note: map['note'] as String?,
         date: DateTime.parse(map['date'] as String),
         createdBy: map['created_by'] as String,
         createdAt: DateTime.parse(map['created_at'] as String),

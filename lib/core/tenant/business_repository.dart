@@ -14,18 +14,40 @@ class BusinessRepository {
 
   final Database db;
 
-  Future<Business> create({required String name, required BusinessType type}) async {
+  Future<Business> create({
+    required String name,
+    required BusinessType type,
+    String? baseCurrency,
+    String? address,
+    String? phone,
+  }) async {
     final now = DateTime.now();
     final business = Business(
       uuid: _uuid.v4(),
       name: name,
       type: type,
+      baseCurrency: baseCurrency,
+      address: address,
+      phone: phone,
       createdAt: now,
       updatedAt: now,
     );
     await db.insert(Business.tableName, business.toMap());
     await seedChartOfAccounts(db, business.uuid);
     return business;
+  }
+
+  /// Edits an existing business's profile — name, currency, address,
+  /// phone. There was no way to change any of this once created; only
+  /// `create()` ever set these fields. Super-Admin-only at the UI layer
+  /// (BusinessSwitcherScreen).
+  Future<void> update(Business business) async {
+    await db.update(
+      Business.tableName,
+      business.toMap(),
+      where: 'uuid = ?',
+      whereArgs: [business.uuid],
+    );
   }
 
   Future<List<Business>> list() async {

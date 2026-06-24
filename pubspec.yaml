@@ -60,6 +60,9 @@ dependencies:
   # Dashboard revenue trend chart
   fl_chart: ^0.69.2
 
+  # Currency-aware money formatting
+  intl: ^0.19.0
+
   # Firebase — auth + backup/sync layer only, never the live query target
   # for transactional screens (PHASES.md Section 14). Free Spark plan: no
   # Cloud Functions (PHASES.md Phase 5 note).
