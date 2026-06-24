@@ -11,13 +11,26 @@ import 'user_profile.dart';
 /// first-ever user as Super Admin, see UserProfileRepository), then show
 /// [child]. This replaces the Phase 0-4 "boot straight into one seeded
 /// business with a hardcoded user" placeholder now that real auth exists.
-class AuthGate extends ConsumerWidget {
+class AuthGate extends ConsumerStatefulWidget {
   const AuthGate({super.key, required this.child});
 
   final Widget child;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<AuthGate> createState() => _AuthGateState();
+}
+
+class _AuthGateState extends ConsumerState<AuthGate> {
+  // Bumped to force a fresh _ensureProfile attempt — the web SQLite
+  // backend (sqflite_common_ffi_web) is explicitly experimental and its
+  // shared worker can fail to come up on the very first attempt after a
+  // fresh deploy; retrying re-runs AppDatabase.open() from scratch
+  // rather than reusing whatever half-initialized state caused the
+  // first failure.
+  int _attempt = 0;
+
+  @override
+  Widget build(BuildContext context) {
     return StreamBuilder<User?>(
       stream: FirebaseAuth.instance.authStateChanges(),
       builder: (context, authSnapshot) {
@@ -31,15 +44,37 @@ class AuthGate extends ConsumerWidget {
         }
 
         return FutureBuilder<UserProfile>(
+          key: ValueKey(_attempt),
           future: _ensureProfile(ref, user),
           builder: (context, profileSnapshot) {
             if (profileSnapshot.connectionState == ConnectionState.waiting) {
               return const Scaffold(body: Center(child: CircularProgressIndicator()));
             }
             if (profileSnapshot.hasError) {
-              return Scaffold(body: Center(child: Text('Failed to load profile: ${profileSnapshot.error}')));
+              return Scaffold(
+                body: Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text('Failed to load profile: ${profileSnapshot.error}', textAlign: TextAlign.center),
+                        const SizedBox(height: 16),
+                        FilledButton(
+                          onPressed: () => setState(() => _attempt++),
+                          child: const Text('Retry'),
+                        ),
+                        TextButton(
+                          onPressed: () => FirebaseAuth.instance.signOut(),
+                          child: const Text('Sign out'),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              );
             }
-            return child;
+            return widget.child;
           },
         );
       },
