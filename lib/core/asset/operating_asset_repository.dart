@@ -1,14 +1,17 @@
 import 'package:sqflite/sqflite.dart';
 import 'package:uuid/uuid.dart';
 
+import '../sync/sync_queue_item.dart';
+import '../sync/sync_queue_repository.dart';
 import 'operating_asset.dart';
 
 const _uuid = Uuid();
 
 class OperatingAssetRepository {
-  OperatingAssetRepository(this.db);
+  OperatingAssetRepository(this.db, [this.syncQueue]);
 
   final Database db;
+  final SyncQueueRepository? syncQueue;
 
   Future<OperatingAsset> create({
     required String businessId,
@@ -24,6 +27,15 @@ class OperatingAssetRepository {
       registrationNumber: registrationNumber,
     );
     await db.insert(OperatingAsset.tableName, asset.toMap());
+    if (syncQueue != null) {
+      await syncQueue!.enqueue(
+        db,
+        businessId: businessId,
+        entityType: 'OperatingAsset',
+        entityId: asset.uuid,
+        operation: SyncOperation.create,
+      );
+    }
     return asset;
   }
 

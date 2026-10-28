@@ -1,6 +1,8 @@
 import 'package:sqflite/sqflite.dart';
 import 'package:uuid/uuid.dart';
 
+import '../../../core/sync/sync_queue_item.dart';
+import '../../../core/sync/sync_queue_repository.dart';
 import 'category.dart';
 
 const _uuid = Uuid();
@@ -10,13 +12,23 @@ const _uuid = Uuid();
 /// create one — ProductListScreen's "New Product" dialog only ever set
 /// those fields to null. This is that missing piece.
 class CategoryRepository {
-  CategoryRepository(this.db);
+  CategoryRepository(this.db, [this.syncQueue]);
 
   final Database db;
+  final SyncQueueRepository? syncQueue;
 
   Future<Category> create({required String businessId, required String name}) async {
     final category = Category(uuid: _uuid.v4(), businessId: businessId, name: name);
     await db.insert(Category.tableName, category.toMap());
+    if (syncQueue != null) {
+      await syncQueue!.enqueue(
+        db,
+        businessId: businessId,
+        entityType: 'Category',
+        entityId: category.uuid,
+        operation: SyncOperation.create,
+      );
+    }
     return category;
   }
 

@@ -1,6 +1,8 @@
 import 'package:sqflite/sqflite.dart';
 import 'package:uuid/uuid.dart';
 
+import '../sync/sync_queue_item.dart';
+import '../sync/sync_queue_repository.dart';
 import 'fixed_asset.dart';
 import 'fixed_asset_repository.dart';
 import 'journal_entry.dart';
@@ -14,11 +16,12 @@ const _uuid = Uuid();
 /// dimension — same pattern as TripExpense/Boat-Vehicle Ledger. See
 /// PHASES.md Section 6/12 and Phase 6.
 class DepreciationService {
-  DepreciationService(this.db, this.assets, this.ledger);
+  DepreciationService(this.db, this.assets, this.ledger, [this.syncQueue]);
 
   final Database db;
   final FixedAssetRepository assets;
   final LedgerRepository ledger;
+  final SyncQueueRepository? syncQueue;
 
   /// [period] is "YYYY-MM". Throws if this asset already has an entry
   /// for that period (the table's unique constraint catches it, but we
@@ -70,6 +73,15 @@ class DepreciationService {
 
     await db.transaction((txn) async {
       await txn.insert(DepreciationEntry.tableName, entry.toMap());
+      if (syncQueue != null) {
+        await syncQueue!.enqueue(
+          txn,
+          businessId: asset.businessId,
+          entityType: 'DepreciationEntry',
+          entityId: entry.uuid,
+          operation: SyncOperation.create,
+        );
+      }
 
       await ledger.postWithin(
         txn,

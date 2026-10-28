@@ -4,6 +4,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/asset/operating_asset.dart';
 import '../../core/system/providers.dart';
 import '../../shared/theme/app_theme.dart';
+import '../../shared/widgets/whatsapp_support.dart';
+import '../transport/vehicle_khata_screen.dart';
 import 'asset_ledger_screen.dart';
 
 /// Shared between Fishery (Boats) and Transport (Vehicles) — same fields,
@@ -21,7 +23,7 @@ class _AssetsScreenState extends ConsumerState<AssetsScreen> {
   List<OperatingAsset>? _assets;
 
   String get _label => widget.assetType == OperatingAssetType.boat ? 'Boat' : 'Vehicle';
-  String get _labelPlural => widget.assetType == OperatingAssetType.boat ? 'Boats' : 'Vehicles';
+  String get _labelPlural => widget.assetType == OperatingAssetType.boat ? 'Boats' : 'Gari Khata';
   IconData get _icon =>
       widget.assetType == OperatingAssetType.boat ? Icons.directions_boat_outlined : Icons.local_shipping_outlined;
 
@@ -78,7 +80,10 @@ class _AssetsScreenState extends ConsumerState<AssetsScreen> {
   Widget build(BuildContext context) {
     final assets = _assets;
     return Scaffold(
-      appBar: AppBar(title: Text(_labelPlural)),
+      appBar: AppBar(
+        title: Text(_labelPlural),
+        actions: const [WhatsAppSupportButton(compact: true)],
+      ),
       floatingActionButton: FloatingActionButton(onPressed: _showAddDialog, child: const Icon(Icons.add)),
       body: assets == null
           ? const Center(child: CircularProgressIndicator())
@@ -112,7 +117,11 @@ class _AssetsScreenState extends ConsumerState<AssetsScreen> {
                         subtitle: asset.registrationNumber != null ? Text(asset.registrationNumber!) : null,
                         trailing: const Icon(Icons.chevron_right),
                         onTap: () => Navigator.of(context).push(
-                          MaterialPageRoute(builder: (_) => AssetLedgerScreen(asset: asset)),
+                          MaterialPageRoute(
+                            builder: (_) => widget.assetType == OperatingAssetType.vehicle
+                                ? VehicleKhataPager(vehicles: assets, initialIndex: index)
+                                : AssetLedgerScreen(asset: asset),
+                          ),
                         ),
                       ),
                     );

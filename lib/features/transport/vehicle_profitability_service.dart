@@ -1,5 +1,5 @@
-import '../../core/activity/trip_expense_repository.dart';
 import 'trip_income_repository.dart';
+import 'vehicle_khata_repository.dart';
 
 class AssetProfitability {
   AssetProfitability({required this.revenueMinorUnits, required this.expenseMinorUnits});
@@ -10,18 +10,21 @@ class AssetProfitability {
   int get profitMinorUnits => revenueMinorUnits - expenseMinorUnits;
 }
 
-/// Vehicle Profitability = total TripIncome minus total TripExpense
-/// across *every* trip a vehicle has ever run — the per-asset rollup,
-/// as distinct from a single trip's profit. See PHASES.md Section 6.
+/// Gari khata profit = jama − kharcha (opening baqaya excluded).
+/// Old TripIncome is still counted so pre-khata data does not vanish.
 class VehicleProfitabilityService {
-  VehicleProfitabilityService(this.tripIncome, this.tripExpenses);
+  VehicleProfitabilityService(this.tripIncome, this.khata);
 
   final TripIncomeRepository tripIncome;
-  final TripExpenseRepository tripExpenses;
+  final VehicleKhataRepository khata;
 
   Future<AssetProfitability> forAsset(String assetUuid) async {
-    final revenue = await tripIncome.totalForAsset(assetUuid);
-    final expense = await tripExpenses.totalForAsset(assetUuid);
-    return AssetProfitability(revenueMinorUnits: revenue, expenseMinorUnits: expense);
+    final oldRevenue = await tripIncome.totalForAsset(assetUuid);
+    final jama = await khata.totalJama(assetUuid);
+    final kharcha = await khata.totalKharcha(assetUuid);
+    return AssetProfitability(
+      revenueMinorUnits: oldRevenue + jama,
+      expenseMinorUnits: kharcha,
+    );
   }
 }

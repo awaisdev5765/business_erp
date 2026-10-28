@@ -47,7 +47,8 @@ const Map<String, List<TripExpenseCategory>> tripExpenseCategoriesByTripType = {
 class TripExpense {
   TripExpense({
     required this.uuid,
-    required this.tripUuid,
+    this.tripUuid,
+    this.assetUuid,
     required this.businessId,
     required this.category,
     required this.amountMinorUnits,
@@ -56,7 +57,14 @@ class TripExpense {
   });
 
   final String uuid;
-  final String tripUuid;
+
+  /// Fishery (and old transport trips) still attach expenses to a trip.
+  /// Vehicle khata expenses have no trip — only [assetUuid].
+  final String? tripUuid;
+
+  /// Boat/vehicle this expense belongs to. Set for new rows so vehicle
+  /// khata works without going through a trip.
+  final String? assetUuid;
   final String businessId;
   final TripExpenseCategory category;
   final int amountMinorUnits;
@@ -68,7 +76,8 @@ class TripExpense {
   static const createTableSql = '''
     CREATE TABLE $tableName (
       uuid TEXT PRIMARY KEY,
-      trip_uuid TEXT NOT NULL,
+      trip_uuid TEXT,
+      asset_uuid TEXT,
       business_id TEXT NOT NULL,
       category TEXT NOT NULL,
       amount_minor_units INTEGER NOT NULL,
@@ -78,10 +87,12 @@ class TripExpense {
   ''';
 
   static const createIndexSql = 'CREATE INDEX idx_trip_expenses_trip ON $tableName (trip_uuid)';
+  static const createAssetIndexSql = 'CREATE INDEX idx_trip_expenses_asset ON $tableName (asset_uuid)';
 
   Map<String, Object?> toMap() => {
         'uuid': uuid,
         'trip_uuid': tripUuid,
+        'asset_uuid': assetUuid,
         'business_id': businessId,
         'category': category.name,
         'amount_minor_units': amountMinorUnits,
@@ -91,7 +102,8 @@ class TripExpense {
 
   factory TripExpense.fromMap(Map<String, Object?> map) => TripExpense(
         uuid: map['uuid'] as String,
-        tripUuid: map['trip_uuid'] as String,
+        tripUuid: map['trip_uuid'] as String?,
+        assetUuid: map['asset_uuid'] as String?,
         businessId: map['business_id'] as String,
         category: TripExpenseCategory.values.byName(map['category'] as String),
         amountMinorUnits: map['amount_minor_units'] as int,

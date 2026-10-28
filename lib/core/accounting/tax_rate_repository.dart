@@ -1,14 +1,17 @@
 import 'package:sqflite/sqflite.dart';
 import 'package:uuid/uuid.dart';
 
+import '../sync/sync_queue_item.dart';
+import '../sync/sync_queue_repository.dart';
 import 'tax_rate.dart';
 
 const _uuid = Uuid();
 
 class TaxRateRepository {
-  TaxRateRepository(this.db);
+  TaxRateRepository(this.db, [this.syncQueue]);
 
   final Database db;
+  final SyncQueueRepository? syncQueue;
 
   Future<TaxRate> create({
     required String businessId,
@@ -17,6 +20,15 @@ class TaxRateRepository {
   }) async {
     final rate = TaxRate(uuid: _uuid.v4(), businessId: businessId, name: name, ratePercent: ratePercent);
     await db.insert(TaxRate.tableName, rate.toMap());
+    if (syncQueue != null) {
+      await syncQueue!.enqueue(
+        db,
+        businessId: businessId,
+        entityType: 'TaxRate',
+        entityId: rate.uuid,
+        operation: SyncOperation.create,
+      );
+    }
     return rate;
   }
 

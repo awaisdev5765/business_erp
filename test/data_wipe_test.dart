@@ -58,6 +58,9 @@ void main() {
     await firestore.collection('businesses').doc(businessId).set({'name': 'My Shop'});
     await firestore.collection('businesses').doc(businessId).collection('parties').doc('p1').set({'name': 'Acme'});
     await firestore.collection('businesses').doc(businessId).collection('products').doc('prod1').set({'sku': 'A1'});
+    await firestore.collection('businesses').doc(businessId).collection('weightEntries').doc('w1').set({'weightKg': 1000});
+    await firestore.collection('businesses').doc(businessId).collection('vehicleKhataLines').doc('k1').set({'tafseel': 'Local'});
+    await firestore.collection('businesses').doc(businessId).collection('sales').doc('s1').set({'total': 1});
 
     await wipeService.wipeFirestoreData();
 
@@ -66,6 +69,12 @@ void main() {
 
     final parties = await firestore.collection('businesses').doc(businessId).collection('parties').get();
     expect(parties.docs, isEmpty);
+    final weights = await firestore.collection('businesses').doc(businessId).collection('weightEntries').get();
+    expect(weights.docs, isEmpty);
+    final khata = await firestore.collection('businesses').doc(businessId).collection('vehicleKhataLines').get();
+    expect(khata.docs, isEmpty);
+    final sales = await firestore.collection('businesses').doc(businessId).collection('sales').get();
+    expect(sales.docs, isEmpty);
   });
 
   test('wipeFirestoreData strips staff businessAccess but leaves the Super Admin profile untouched', () async {

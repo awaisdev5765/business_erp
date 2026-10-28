@@ -1,13 +1,15 @@
 /// `pendingApproval`: a credit sale above the business's configured
 /// ApprovalThreshold — created but not yet posted (no stock movement, no
 /// JournalEntry) until SaleRepository.approve() runs. See PHASES.md
-/// Phase 6.
-enum SaleStatus { posted, pendingApproval, returned, void_ }
+/// Phase 6. `partiallyReturned`: some, but not all, line quantities have
+/// been refunded via RefundRepository.refund() — see refund.dart.
+enum SaleStatus { posted, pendingApproval, returned, partiallyReturned, void_ }
 
 enum PaymentMethod { cash, credit }
 
 class SaleLine {
   SaleLine({
+    this.id,
     required this.saleUuid,
     required this.productUuid,
     required this.quantity,
@@ -16,6 +18,11 @@ class SaleLine {
     this.taxRatePercent = 0,
   });
 
+  /// Null until loaded from the DB (autoincrement, never set by [toMap])
+  /// — RefundRepository ties refund_lines back to one specific sale line
+  /// via this id, rather than to (saleUuid, productUuid), since a sale
+  /// could in principle carry the same product on two separate lines.
+  final int? id;
   final String saleUuid;
   final String productUuid;
   final int quantity;
@@ -62,6 +69,7 @@ class SaleLine {
       };
 
   factory SaleLine.fromMap(Map<String, Object?> map) => SaleLine(
+        id: map['id'] as int?,
         saleUuid: map['sale_uuid'] as String,
         productUuid: map['product_uuid'] as String,
         quantity: map['quantity'] as int,

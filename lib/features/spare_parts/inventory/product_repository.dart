@@ -118,10 +118,11 @@ class ProductRepository {
       whereArgs: [productUuid],
     );
 
+    final movementUuid = _uuid.v4();
     await txn.insert(
       StockMovement.tableName,
       StockMovement(
-        uuid: _uuid.v4(),
+        uuid: movementUuid,
         businessId: businessId,
         productUuid: productUuid,
         reason: reason,
@@ -131,5 +132,14 @@ class ProductRepository {
         createdAt: DateTime.now(),
       ).toMap(),
     );
+    if (syncQueue != null) {
+      await syncQueue!.enqueue(
+        txn,
+        businessId: businessId,
+        entityType: 'StockMovement',
+        entityId: movementUuid,
+        operation: SyncOperation.create,
+      );
+    }
   }
 }

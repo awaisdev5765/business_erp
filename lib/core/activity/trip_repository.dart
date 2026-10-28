@@ -1,14 +1,17 @@
 import 'package:sqflite/sqflite.dart';
 import 'package:uuid/uuid.dart';
 
+import '../sync/sync_queue_item.dart';
+import '../sync/sync_queue_repository.dart';
 import 'trip.dart';
 
 const _uuid = Uuid();
 
 class TripRepository {
-  TripRepository(this.db);
+  TripRepository(this.db, [this.syncQueue]);
 
   final Database db;
+  final SyncQueueRepository? syncQueue;
 
   Future<Trip> create({
     required String businessId,
@@ -29,6 +32,15 @@ class TripRepository {
       notes: notes,
     );
     await db.insert(Trip.tableName, trip.toMap());
+    if (syncQueue != null) {
+      await syncQueue!.enqueue(
+        db,
+        businessId: businessId,
+        entityType: 'Trip',
+        entityId: trip.uuid,
+        operation: SyncOperation.create,
+      );
+    }
     return trip;
   }
 
@@ -39,6 +51,7 @@ class TripRepository {
       where: 'uuid = ?',
       whereArgs: [tripUuid],
     );
+    await _enqueueUpdate(tripUuid);
   }
 
   Future<void> complete(String tripUuid, {DateTime? endDate}) async {
@@ -50,6 +63,20 @@ class TripRepository {
       },
       where: 'uuid = ?',
       whereArgs: [tripUuid],
+    );
+    await _enqueueUpdate(tripUuid);
+  }
+
+  Future<void> _enqueueUpdate(String tripUuid) async {
+    if (syncQueue == null) return;
+    final trip = await findByUuid(tripUuid);
+    if (trip == null) return;
+    await syncQueue!.enqueue(
+      db,
+      businessId: trip.businessId,
+      entityType: 'Trip',
+      entityId: tripUuid,
+      operation: SyncOperation.update,
     );
   }
 

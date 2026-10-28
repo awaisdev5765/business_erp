@@ -3,6 +3,8 @@ import 'package:uuid/uuid.dart';
 
 import '../accounting/journal_entry.dart';
 import '../accounting/ledger_repository.dart';
+import '../sync/sync_queue_item.dart';
+import '../sync/sync_queue_repository.dart';
 import 'salary_record.dart';
 
 const _uuid = Uuid();
@@ -13,10 +15,11 @@ const _uuid = Uuid();
 /// — same reuse of the ledger-as-sub-ledger-view pattern as everywhere
 /// else (PHASES.md Section 11).
 class SalaryRepository {
-  SalaryRepository(this.db, this.ledger);
+  SalaryRepository(this.db, this.ledger, [this.syncQueue]);
 
   final Database db;
   final LedgerRepository ledger;
+  final SyncQueueRepository? syncQueue;
 
   Future<SalaryRecord> createRecord({
     required String businessId,
@@ -32,6 +35,15 @@ class SalaryRepository {
       startDate: startDate ?? DateTime.now(),
     );
     await db.insert(SalaryRecord.tableName, record.toMap());
+    if (syncQueue != null) {
+      await syncQueue!.enqueue(
+        db,
+        businessId: businessId,
+        entityType: 'SalaryRecord',
+        entityId: record.uuid,
+        operation: SyncOperation.create,
+      );
+    }
     return record;
   }
 
@@ -78,6 +90,15 @@ class SalaryRepository {
 
     await db.transaction((txn) async {
       await txn.insert(SalaryPayment.tableName, payment.toMap());
+      if (syncQueue != null) {
+        await syncQueue!.enqueue(
+          txn,
+          businessId: record.businessId,
+          entityType: 'SalaryPayment',
+          entityId: payment.uuid,
+          operation: SyncOperation.create,
+        );
+      }
 
       await ledger.postWithin(
         txn,

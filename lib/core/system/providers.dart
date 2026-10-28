@@ -40,11 +40,15 @@ import '../../features/spare_parts/inventory/brand_repository.dart';
 import '../../features/spare_parts/inventory/category_repository.dart';
 import '../../features/spare_parts/inventory/product_repository.dart';
 import '../../features/spare_parts/purchases/purchase_repository.dart';
+import '../../features/spare_parts/sales/refund_repository.dart';
 import '../../features/spare_parts/sales/sale_repository.dart';
 import '../../features/transport/contract_repository.dart';
 import '../../features/transport/driver_performance_service.dart';
+import '../../features/transport/monthly_settlement_repository.dart';
 import '../../features/transport/trip_income_repository.dart';
+import '../../features/transport/vehicle_khata_repository.dart';
 import '../../features/transport/vehicle_profitability_service.dart';
+import '../../features/transport/weight_entry_repository.dart';
 import 'audit_log_repository.dart';
 import 'data_wipe_service.dart';
 import 'database.dart';
@@ -73,13 +77,34 @@ class NoBusinessExistsException implements Exception {
   String toString() => 'No business has been created yet.';
 }
 
+/// Guards [currentBusinessIdProvider]'s cloud-restore attempt to once per
+/// app session — restoring is a handful of full Firestore collection
+/// reads per business, not something to retry on every rebuild. Module-
+/// level (not provider state) so it survives provider disposal/recreation
+/// the same way the rest of this file's plain top-level constants do.
+bool _cloudRestoreAttempted = false;
+
+/// Call after a deliberate wipe so the next signed-in session can try
+/// restoreFromCloud again (otherwise a stale true flag would skip it —
+/// or, worse, leave wiped+restored state inconsistent).
+void resetCloudRestoreAttempt() => _cloudRestoreAttempted = false;
+
 final currentBusinessIdProvider = FutureProvider<String>((ref) async {
   final db = await ref.watch(databaseProvider.future);
 
   final selected = ref.watch(selectedBusinessIdProvider);
   if (selected != null) {
-    await seedChartOfAccounts(db, selected); // idempotent top-up, see seedChartOfAccounts
-    return selected;
+    final exists = await db.query(
+      Business.tableName,
+      where: 'uuid = ? AND is_active = 1',
+      whereArgs: [selected],
+      limit: 1,
+    );
+    if (exists.isNotEmpty) {
+      await seedChartOfAccounts(db, selected); // idempotent top-up, see seedChartOfAccounts
+      return selected;
+    }
+    // Stale selection after wipe / deleted business — fall through.
   }
 
   // Auto-pick whichever business happens to be first locally — this is
@@ -97,12 +122,46 @@ final currentBusinessIdProvider = FutureProvider<String>((ref) async {
     return businessId;
   }
 
+  // Local SQLite has no businesses at all — on web this is the normal
+  // symptom of sqflite_common_ffi_web's experimental IndexedDB backend
+  // losing data across a closed/reopened tab (see FirestoreSyncService.
+  // restoreFromCloud's doc comment), not necessarily a genuinely new
+  // user. Try recovering from Firestore once before concluding there's
+  // really nothing here yet.
+  if (!_cloudRestoreAttempted) {
+    _cloudRestoreAttempted = true;
+    try {
+      final profile = await ref.read(currentUserProfileProvider.future);
+      if (profile != null) {
+        final syncService = await ref.read(firestoreSyncServiceProvider.future);
+        final restored = await syncService.restoreFromCloud(
+          isSuperAdmin: profile.isSuperAdmin,
+          businessAccess: profile.businessAccess,
+        );
+        if (restored) {
+          final retried = await db.query(Business.tableName, where: 'is_active = 1', limit: 1);
+          if (retried.isNotEmpty) {
+            final businessId = retried.first['uuid'] as String;
+            await seedChartOfAccounts(db, businessId);
+            return businessId;
+          }
+        }
+      }
+    } catch (_) {
+      // Offline or a transient Firestore error — fall through to
+      // NoBusinessExistsException below, same as a genuinely new user;
+      // the next app boot (online) will retry since this flag is
+      // per-session, not persisted.
+    }
+  }
+
   throw NoBusinessExistsException();
 });
 
 final businessRepositoryProvider = FutureProvider<BusinessRepository>((ref) async {
   final db = await ref.watch(databaseProvider.future);
-  return BusinessRepository(db);
+  final syncQueue = await ref.watch(syncQueueRepositoryProvider.future);
+  return BusinessRepository(db, syncQueue);
 });
 
 /// The full active [Business] record (not just its id) — lets the nav
@@ -200,46 +259,54 @@ final firestoreSyncServiceProvider = FutureProvider<FirestoreSyncService>((ref) 
   final syncQueue = await ref.watch(syncQueueRepositoryProvider.future);
   final ledger = await ref.watch(ledgerRepositoryProvider.future);
   final conflictRecords = await ref.watch(conflictRecordRepositoryProvider.future);
+  final numbering = await ref.watch(numberSequenceServiceProvider.future);
   return FirestoreSyncService(
     db: db,
     firestore: firestore,
     syncQueue: syncQueue,
     ledger: ledger,
     conflictRecords: conflictRecords,
+    numbering: numbering,
   );
 });
 
 final fiscalPeriodRepositoryProvider = FutureProvider<FiscalPeriodRepository>((ref) async {
   final db = await ref.watch(databaseProvider.future);
-  return FiscalPeriodRepository(db);
+  final syncQueue = await ref.watch(syncQueueRepositoryProvider.future);
+  return FiscalPeriodRepository(db, syncQueue);
 });
 
 final fixedAssetRepositoryProvider = FutureProvider<FixedAssetRepository>((ref) async {
   final db = await ref.watch(databaseProvider.future);
-  return FixedAssetRepository(db);
+  final syncQueue = await ref.watch(syncQueueRepositoryProvider.future);
+  return FixedAssetRepository(db, syncQueue);
 });
 
 final approvalThresholdRepositoryProvider = FutureProvider<ApprovalThresholdRepository>((ref) async {
   final db = await ref.watch(databaseProvider.future);
-  return ApprovalThresholdRepository(db);
+  final syncQueue = await ref.watch(syncQueueRepositoryProvider.future);
+  return ApprovalThresholdRepository(db, syncQueue);
 });
 
 final depreciationServiceProvider = FutureProvider<DepreciationService>((ref) async {
   final db = await ref.watch(databaseProvider.future);
   final assets = await ref.watch(fixedAssetRepositoryProvider.future);
   final ledger = await ref.watch(ledgerRepositoryProvider.future);
-  return DepreciationService(db, assets, ledger);
+  final syncQueue = await ref.watch(syncQueueRepositoryProvider.future);
+  return DepreciationService(db, assets, ledger, syncQueue);
 });
 
 final salaryRepositoryProvider = FutureProvider<SalaryRepository>((ref) async {
   final db = await ref.watch(databaseProvider.future);
   final ledger = await ref.watch(ledgerRepositoryProvider.future);
-  return SalaryRepository(db, ledger);
+  final syncQueue = await ref.watch(syncQueueRepositoryProvider.future);
+  return SalaryRepository(db, ledger, syncQueue);
 });
 
 final auditLogRepositoryProvider = FutureProvider<AuditLogRepository>((ref) async {
   final db = await ref.watch(databaseProvider.future);
-  return AuditLogRepository(db);
+  final syncQueue = await ref.watch(syncQueueRepositoryProvider.future);
+  return AuditLogRepository(db, syncQueue);
 });
 
 final expenseRepositoryProvider = FutureProvider<ExpenseRepository>((ref) async {
@@ -274,12 +341,14 @@ final ledgerRepositoryProvider = FutureProvider<LedgerRepository>((ref) async {
 
 final taxRateRepositoryProvider = FutureProvider<TaxRateRepository>((ref) async {
   final db = await ref.watch(databaseProvider.future);
-  return TaxRateRepository(db);
+  final syncQueue = await ref.watch(syncQueueRepositoryProvider.future);
+  return TaxRateRepository(db, syncQueue);
 });
 
 final bankAccountRepositoryProvider = FutureProvider<BankAccountRepository>((ref) async {
   final db = await ref.watch(databaseProvider.future);
-  return BankAccountRepository(db);
+  final syncQueue = await ref.watch(syncQueueRepositoryProvider.future);
+  return BankAccountRepository(db, syncQueue);
 });
 
 final productRepositoryProvider = FutureProvider<ProductRepository>((ref) async {
@@ -291,12 +360,14 @@ final productRepositoryProvider = FutureProvider<ProductRepository>((ref) async 
 
 final categoryRepositoryProvider = FutureProvider<CategoryRepository>((ref) async {
   final db = await ref.watch(databaseProvider.future);
-  return CategoryRepository(db);
+  final syncQueue = await ref.watch(syncQueueRepositoryProvider.future);
+  return CategoryRepository(db, syncQueue);
 });
 
 final brandRepositoryProvider = FutureProvider<BrandRepository>((ref) async {
   final db = await ref.watch(databaseProvider.future);
-  return BrandRepository(db);
+  final syncQueue = await ref.watch(syncQueueRepositoryProvider.future);
+  return BrandRepository(db, syncQueue);
 });
 
 final partyRepositoryProvider = FutureProvider<PartyRepository>((ref) async {
@@ -317,7 +388,8 @@ final purchaseRepositoryProvider = FutureProvider<PurchaseRepository>((ref) asyn
   final products = await ref.watch(productRepositoryProvider.future);
   final numbering = await ref.watch(numberSequenceServiceProvider.future);
   final auditLog = await ref.watch(auditLogRepositoryProvider.future);
-  return PurchaseRepository(db, ledger, products, numbering, auditLog);
+  final syncQueue = await ref.watch(syncQueueRepositoryProvider.future);
+  return PurchaseRepository(db, ledger, products, numbering, auditLog, syncQueue);
 });
 
 final saleRepositoryProvider = FutureProvider<SaleRepository>((ref) async {
@@ -327,52 +399,71 @@ final saleRepositoryProvider = FutureProvider<SaleRepository>((ref) async {
   final numbering = await ref.watch(numberSequenceServiceProvider.future);
   final approvalThresholds = await ref.watch(approvalThresholdRepositoryProvider.future);
   final auditLog = await ref.watch(auditLogRepositoryProvider.future);
-  return SaleRepository(db, ledger, products, numbering, approvalThresholds, auditLog);
+  final syncQueue = await ref.watch(syncQueueRepositoryProvider.future);
+  return SaleRepository(db, ledger, products, numbering, approvalThresholds, auditLog, syncQueue);
+});
+
+final refundRepositoryProvider = FutureProvider<RefundRepository>((ref) async {
+  final db = await ref.watch(databaseProvider.future);
+  final ledger = await ref.watch(ledgerRepositoryProvider.future);
+  final products = await ref.watch(productRepositoryProvider.future);
+  final sales = await ref.watch(saleRepositoryProvider.future);
+  final numbering = await ref.watch(numberSequenceServiceProvider.future);
+  final auditLog = await ref.watch(auditLogRepositoryProvider.future);
+  final syncQueue = await ref.watch(syncQueueRepositoryProvider.future);
+  return RefundRepository(db, ledger, products, sales, numbering, auditLog, syncQueue);
 });
 
 final paymentRepositoryProvider = FutureProvider<PaymentRepository>((ref) async {
   final db = await ref.watch(databaseProvider.future);
   final ledger = await ref.watch(ledgerRepositoryProvider.future);
   final numbering = await ref.watch(numberSequenceServiceProvider.future);
-  return PaymentRepository(db, ledger, numbering);
+  final syncQueue = await ref.watch(syncQueueRepositoryProvider.future);
+  return PaymentRepository(db, ledger, numbering, syncQueue);
 });
 
 // --- Shared across Fishery/Transport (OperatingAsset, Trip, TripExpense) ---
 
 final operatingAssetRepositoryProvider = FutureProvider<OperatingAssetRepository>((ref) async {
   final db = await ref.watch(databaseProvider.future);
-  return OperatingAssetRepository(db);
+  final syncQueue = await ref.watch(syncQueueRepositoryProvider.future);
+  return OperatingAssetRepository(db, syncQueue);
 });
 
 final tripRepositoryProvider = FutureProvider<TripRepository>((ref) async {
   final db = await ref.watch(databaseProvider.future);
-  return TripRepository(db);
+  final syncQueue = await ref.watch(syncQueueRepositoryProvider.future);
+  return TripRepository(db, syncQueue);
 });
 
 final tripExpenseRepositoryProvider = FutureProvider<TripExpenseRepository>((ref) async {
   final db = await ref.watch(databaseProvider.future);
   final ledger = await ref.watch(ledgerRepositoryProvider.future);
   final trips = await ref.watch(tripRepositoryProvider.future);
-  return TripExpenseRepository(db, ledger, trips);
+  final syncQueue = await ref.watch(syncQueueRepositoryProvider.future);
+  return TripExpenseRepository(db, ledger, trips, syncQueue);
 });
 
 // --- Fishery vertical ---
 
 final fishCategoryRepositoryProvider = FutureProvider<FishCategoryRepository>((ref) async {
   final db = await ref.watch(databaseProvider.future);
-  return FishCategoryRepository(db);
+  final syncQueue = await ref.watch(syncQueueRepositoryProvider.future);
+  return FishCategoryRepository(db, syncQueue);
 });
 
 final catchRepositoryProvider = FutureProvider<CatchRepository>((ref) async {
   final db = await ref.watch(databaseProvider.future);
-  return CatchRepository(db);
+  final syncQueue = await ref.watch(syncQueueRepositoryProvider.future);
+  return CatchRepository(db, syncQueue);
 });
 
 final fishSaleRepositoryProvider = FutureProvider<FishSaleRepository>((ref) async {
   final db = await ref.watch(databaseProvider.future);
   final ledger = await ref.watch(ledgerRepositoryProvider.future);
   final trips = await ref.watch(tripRepositoryProvider.future);
-  return FishSaleRepository(db, ledger, trips);
+  final syncQueue = await ref.watch(syncQueueRepositoryProvider.future);
+  return FishSaleRepository(db, ledger, trips, syncQueue);
 });
 
 final tripProfitServiceProvider = FutureProvider<TripProfitService>((ref) async {
@@ -385,20 +476,44 @@ final tripProfitServiceProvider = FutureProvider<TripProfitService>((ref) async 
 
 final contractRepositoryProvider = FutureProvider<ContractRepository>((ref) async {
   final db = await ref.watch(databaseProvider.future);
-  return ContractRepository(db);
+  final syncQueue = await ref.watch(syncQueueRepositoryProvider.future);
+  return ContractRepository(db, syncQueue);
 });
 
 final tripIncomeRepositoryProvider = FutureProvider<TripIncomeRepository>((ref) async {
   final db = await ref.watch(databaseProvider.future);
   final ledger = await ref.watch(ledgerRepositoryProvider.future);
   final trips = await ref.watch(tripRepositoryProvider.future);
-  return TripIncomeRepository(db, ledger, trips);
+  final syncQueue = await ref.watch(syncQueueRepositoryProvider.future);
+  return TripIncomeRepository(db, ledger, trips, syncQueue);
+});
+
+final weightEntryRepositoryProvider = FutureProvider<WeightEntryRepository>((ref) async {
+  final db = await ref.watch(databaseProvider.future);
+  final syncQueue = await ref.watch(syncQueueRepositoryProvider.future);
+  return WeightEntryRepository(db, syncQueue);
+});
+
+final vehicleKhataRepositoryProvider = FutureProvider<VehicleKhataRepository>((ref) async {
+  final db = await ref.watch(databaseProvider.future);
+  final ledger = await ref.watch(ledgerRepositoryProvider.future);
+  final syncQueue = await ref.watch(syncQueueRepositoryProvider.future);
+  return VehicleKhataRepository(db, ledger, syncQueue);
+});
+
+final monthlySettlementRepositoryProvider = FutureProvider<MonthlySettlementRepository>((ref) async {
+  final db = await ref.watch(databaseProvider.future);
+  final ledger = await ref.watch(ledgerRepositoryProvider.future);
+  final weightEntries = await ref.watch(weightEntryRepositoryProvider.future);
+  final vehicleKhata = await ref.watch(vehicleKhataRepositoryProvider.future);
+  final syncQueue = await ref.watch(syncQueueRepositoryProvider.future);
+  return MonthlySettlementRepository(db, ledger, weightEntries, vehicleKhata, syncQueue);
 });
 
 final vehicleProfitabilityServiceProvider = FutureProvider<VehicleProfitabilityService>((ref) async {
   final tripIncome = await ref.watch(tripIncomeRepositoryProvider.future);
-  final tripExpenses = await ref.watch(tripExpenseRepositoryProvider.future);
-  return VehicleProfitabilityService(tripIncome, tripExpenses);
+  final khata = await ref.watch(vehicleKhataRepositoryProvider.future);
+  return VehicleProfitabilityService(tripIncome, khata);
 });
 
 final driverPerformanceServiceProvider = FutureProvider<DriverPerformanceService>((ref) async {

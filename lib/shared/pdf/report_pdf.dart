@@ -129,6 +129,73 @@ class ReportPdf {
     await Printing.layoutPdf(onLayout: (format) => doc.save());
   }
 
+  static Future<void> printSalesReport({
+    required String businessName,
+    required String periodLabel,
+    required int salesCount,
+    required int grossSales,
+    required int discounts,
+    required int tax,
+    required int netSales,
+    required int refundsCount,
+    required int refundsTotal,
+    required int netRevenue,
+    required int cashSales,
+    required int creditSales,
+    required int totalIncome,
+    required int totalExpense,
+  }) async {
+    final netProfit = totalIncome - totalExpense;
+    final doc = pw.Document();
+    doc.addPage(
+      pw.MultiPage(
+        pageFormat: PdfPageFormat.a4,
+        build: (context) => [
+          pw.Text(businessName, style: pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold)),
+          pw.Text('Sales Report — $periodLabel'),
+          pw.SizedBox(height: 16),
+          pw.Text('Sales Summary', style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
+          _kv('Sales Count', '$salesCount'),
+          _kv('Gross Sales', _money(grossSales)),
+          _kv('Discounts Given', _money(discounts)),
+          _kv('Tax Collected', _money(tax)),
+          _kv('Net Sales', _money(netSales)),
+          _kv('Cash Sales', _money(cashSales)),
+          _kv('Credit Sales', _money(creditSales)),
+          pw.SizedBox(height: 8),
+          _kv('Refunds Count', '$refundsCount'),
+          _kv('Refunds Total', _money(refundsTotal)),
+          pw.Divider(),
+          pw.Row(
+            mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+            children: [
+              pw.Text('Net Revenue', style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
+              pw.Text(_money(netRevenue), style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
+            ],
+          ),
+          pw.SizedBox(height: 16),
+          pw.Text('Financial Summary', style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
+          _kv('Total Income', _money(totalIncome)),
+          _kv('Total Expense', _money(totalExpense)),
+          pw.Divider(),
+          pw.Row(
+            mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+            children: [
+              pw.Text(netProfit >= 0 ? 'Net Profit' : 'Net Loss', style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
+              pw.Text(_money(netProfit.abs()), style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
+            ],
+          ),
+        ],
+      ),
+    );
+    await Printing.layoutPdf(onLayout: (format) => doc.save());
+  }
+
+  static pw.Widget _kv(String label, String value) => pw.Row(
+        mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+        children: [pw.Text(label), pw.Text(value)],
+      );
+
   static pw.Widget _cell(String text, {bool bold = false}) => pw.Padding(
         padding: const pw.EdgeInsets.all(6),
         child: pw.Text(text, style: bold ? pw.TextStyle(fontWeight: pw.FontWeight.bold) : null),

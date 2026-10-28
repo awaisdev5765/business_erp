@@ -11,9 +11,13 @@ import '../../features/fishery/fish_sale.dart';
 import '../../features/spare_parts/inventory/category.dart';
 import '../../features/spare_parts/inventory/product.dart';
 import '../../features/spare_parts/purchases/purchase.dart';
+import '../../features/spare_parts/sales/refund.dart';
 import '../../features/spare_parts/sales/sale.dart';
 import '../../features/transport/contract.dart';
+import '../../features/transport/monthly_settlement.dart';
 import '../../features/transport/trip_income.dart';
+import '../../features/transport/vehicle_khata_line.dart';
+import '../../features/transport/weight_entry.dart';
 import '../accounting/account.dart';
 import '../accounting/approval_threshold.dart';
 import '../accounting/balance_rollup.dart';
@@ -84,6 +88,18 @@ class AppDatabase {
     );
     return _instance!;
   }
+
+  /// After a full wipe (especially on web IndexedDB) — drop the cached
+  /// handle and open a fresh empty database.
+  static Future<Database> resetAndOpen() async {
+    if (_instance != null) {
+      try {
+        await _instance!.close();
+      } catch (_) {}
+      _instance = null;
+    }
+    return open();
+  }
 }
 
 /// Bump whenever createSchema()'s table definitions change shape (new
@@ -92,7 +108,7 @@ class AppDatabase {
 /// database always gets the latest shape directly via [createSchema];
 /// migrations only run for a database that already existed at a lower
 /// version (i.e. real installs with real data, not fresh ones).
-const _schemaVersion = 3;
+const _schemaVersion = 7;
 
 /// v1 -> v2: added Business.address/phone and Payment.method/note.
 /// v2 -> v3: added Sale.discount_minor_units and the new Expense table
@@ -100,6 +116,22 @@ const _schemaVersion = 3;
 /// work. SQLite's ALTER TABLE only supports adding one column at a
 /// time with a constant DEFAULT (no backfill logic needed here — every
 /// existing row just gets the column's default).
+/// v3 -> v4: added the Refund/RefundLine tables for qty-wise partial
+/// refunds (see refund.dart) — purely additive, no existing column
+/// changes, so nothing to backfill.
+/// v4 -> v5: number_sequences gained a `year` column and moved to
+/// PRIMARY KEY (business_id, doc_type, year), so document numbers reset
+/// every January (NumberSequenceService). SQLite's ALTER TABLE can't
+/// change a primary key, so the table is rebuilt: existing counters are
+/// carried over into the *current* year's row (rather than reset to 0),
+/// so a business mid-way through its 2026 numbers doesn't suddenly
+/// reissue numbers it already printed on paper receipts.
+/// v5 -> v6: transport weight register + month hisaab (WeightEntry,
+/// MonthlySettlement), company rate-per-ton, and trip_expenses rebuilt
+/// so vehicle khata expenses can exist without a trip (nullable
+/// trip_uuid + asset_uuid).
+/// v6 -> v7: Company Bills weight is kg (not tons); Gari Khata running
+/// ledger table (Date / Tafseel / Kharcha / Jama).
 Future<void> migrateSchema(DatabaseExecutor db, int oldVersion, int newVersion) async {
   if (oldVersion < 2) {
     await db.execute('ALTER TABLE ${Business.tableName} ADD COLUMN address TEXT');
@@ -111,6 +143,85 @@ Future<void> migrateSchema(DatabaseExecutor db, int oldVersion, int newVersion) 
     await db.execute('ALTER TABLE ${Sale.tableName} ADD COLUMN discount_minor_units INTEGER NOT NULL DEFAULT 0');
     await db.execute(Expense.createTableSql);
     await db.execute(Expense.createIndexSql);
+  }
+  if (oldVersion < 4) {
+    await db.execute(Refund.createTableSql);
+    await db.execute(Refund.createIndexSql);
+    await db.execute(Refund.createBusinessDateIndexSql);
+    await db.execute(RefundLine.createTableSql);
+    await db.execute(RefundLine.createIndexSql);
+    await db.execute(RefundLine.createSaleLineIndexSql);
+  }
+  if (oldVersion < 5) {
+    final currentYear = DateTime.now().year;
+    await db.execute('ALTER TABLE ${NumberSequence.tableName} RENAME TO number_sequences_old');
+    await db.execute(NumberSequence.createTableSql);
+    await db.execute('''
+      INSERT INTO ${NumberSequence.tableName} (business_id, doc_type, year, last_number)
+      SELECT business_id, doc_type, $currentYear, last_number FROM number_sequences_old
+    ''');
+    await db.execute('DROP TABLE number_sequences_old');
+  }
+  if (oldVersion < 6) {
+    await db.execute('ALTER TABLE ${Contract.tableName} ADD COLUMN rate_per_ton_minor_units INTEGER');
+    // Frozen v6 shape (weight in tons). v7 converts to kg.
+    await db.execute('''
+      CREATE TABLE weight_entries (
+        uuid TEXT PRIMARY KEY,
+        business_id TEXT NOT NULL,
+        vehicle_uuid TEXT NOT NULL,
+        company_uuid TEXT NOT NULL,
+        date TEXT NOT NULL,
+        weight_tons REAL NOT NULL,
+        notes TEXT,
+        settlement_uuid TEXT,
+        amount_minor_units INTEGER
+      )
+    ''');
+    await db.execute('CREATE INDEX idx_weight_entries_business_date ON weight_entries (business_id, date)');
+    await db.execute('CREATE INDEX idx_weight_entries_vehicle ON weight_entries (vehicle_uuid, date)');
+    await db.execute('CREATE INDEX idx_weight_entries_company ON weight_entries (company_uuid, date)');
+    await db.execute('''
+      CREATE TABLE monthly_settlements (
+        uuid TEXT PRIMARY KEY,
+        business_id TEXT NOT NULL,
+        company_uuid TEXT NOT NULL,
+        year INTEGER NOT NULL,
+        month INTEGER NOT NULL,
+        rate_per_ton_minor_units INTEGER NOT NULL,
+        total_weight_tons REAL NOT NULL,
+        amount_minor_units INTEGER NOT NULL,
+        date TEXT NOT NULL,
+        UNIQUE (business_id, company_uuid, year, month)
+      )
+    ''');
+    await db.execute('CREATE INDEX idx_monthly_settlements_business ON monthly_settlements (business_id, year, month)');
+
+    await db.execute('ALTER TABLE ${TripExpense.tableName} RENAME TO trip_expenses_old');
+    await db.execute(TripExpense.createTableSql);
+    await db.execute('''
+      INSERT INTO ${TripExpense.tableName}
+        (uuid, trip_uuid, asset_uuid, business_id, category, amount_minor_units, description, date)
+      SELECT te.uuid, te.trip_uuid, t.asset_uuid, te.business_id, te.category,
+             te.amount_minor_units, te.description, te.date
+      FROM trip_expenses_old te
+      LEFT JOIN ${Trip.tableName} t ON t.uuid = te.trip_uuid
+    ''');
+    await db.execute('DROP TABLE trip_expenses_old');
+    await db.execute(TripExpense.createIndexSql);
+    await db.execute(TripExpense.createAssetIndexSql);
+  }
+  if (oldVersion < 7) {
+    await db.execute('ALTER TABLE ${WeightEntry.tableName} ADD COLUMN weight_kg REAL');
+    await db.execute(
+      'UPDATE ${WeightEntry.tableName} SET weight_kg = weight_tons * 1000 WHERE weight_kg IS NULL',
+    );
+    await db.execute('ALTER TABLE ${MonthlySettlement.tableName} ADD COLUMN total_weight_kg REAL');
+    await db.execute(
+      'UPDATE ${MonthlySettlement.tableName} SET total_weight_kg = total_weight_tons * 1000 WHERE total_weight_kg IS NULL',
+    );
+    await db.execute(VehicleKhataLine.createTableSql);
+    await db.execute(VehicleKhataLine.createIndexSql);
   }
 }
 
@@ -146,6 +257,12 @@ Future<void> createSchema(DatabaseExecutor db) async {
   await db.execute(Sale.createIndexSql);
   await db.execute(SaleLine.createTableSql);
   await db.execute(SaleLine.createIndexSql);
+  await db.execute(Refund.createTableSql);
+  await db.execute(Refund.createIndexSql);
+  await db.execute(Refund.createBusinessDateIndexSql);
+  await db.execute(RefundLine.createTableSql);
+  await db.execute(RefundLine.createIndexSql);
+  await db.execute(RefundLine.createSaleLineIndexSql);
   await db.execute(Payment.createTableSql);
   await db.execute(Payment.createIndexSql);
   await db.execute(FiscalPeriod.createTableSql);
@@ -162,6 +279,7 @@ Future<void> createSchema(DatabaseExecutor db) async {
   await db.execute(Trip.createIndexSql);
   await db.execute(TripExpense.createTableSql);
   await db.execute(TripExpense.createIndexSql);
+  await db.execute(TripExpense.createAssetIndexSql);
   await db.execute(FishCategory.createTableSql);
   await db.execute(CatchEntry.createTableSql);
   await db.execute(CatchEntry.createIndexSql);
@@ -171,6 +289,14 @@ Future<void> createSchema(DatabaseExecutor db) async {
   await db.execute(Contract.createIndexSql);
   await db.execute(TripIncome.createTableSql);
   await db.execute(TripIncome.createIndexSql);
+  await db.execute(WeightEntry.createTableSql);
+  await db.execute(WeightEntry.createIndexSql);
+  await db.execute(WeightEntry.createVehicleIndexSql);
+  await db.execute(WeightEntry.createCompanyIndexSql);
+  await db.execute(MonthlySettlement.createTableSql);
+  await db.execute(MonthlySettlement.createIndexSql);
+  await db.execute(VehicleKhataLine.createTableSql);
+  await db.execute(VehicleKhataLine.createIndexSql);
   await db.execute(SyncQueueItem.createTableSql);
   await db.execute(SyncQueueItem.createIndexSql);
   await db.execute(ConflictRecord.createTableSql);

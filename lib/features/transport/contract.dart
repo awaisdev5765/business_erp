@@ -1,10 +1,7 @@
-/// A standing agreement with a company (a [Party] of type customer) to
-/// haul their cargo, typically at an agreed rate. Deliberately a simple
-/// registry for Phase 4 — no automatic invoicing or term enforcement;
-/// [TripIncome] can optionally reference a contract for traceability, but
-/// nothing requires it. Receivable/Payable tracking for a contract's
-/// company is just the existing Customer Ledger (PartyRepository) — no
-/// new ledger machinery needed.
+/// Company rate card — typically Rs per ton. Used at month-end hisaab
+/// (weight × rate). Old [ratePerTripMinorUnits] is kept for existing rows
+/// only; new UI writes [ratePerTonMinorUnits]. Company khata itself is
+/// still the Customer Ledger.
 class Contract {
   Contract({
     required this.uuid,
@@ -12,6 +9,7 @@ class Contract {
     required this.customerUuid,
     required this.description,
     this.ratePerTripMinorUnits,
+    this.ratePerTonMinorUnits,
     this.isActive = true,
     required this.startDate,
     this.endDate,
@@ -22,6 +20,7 @@ class Contract {
   final String customerUuid;
   final String description;
   final int? ratePerTripMinorUnits;
+  final int? ratePerTonMinorUnits;
   final bool isActive;
   final DateTime startDate;
   final DateTime? endDate;
@@ -35,6 +34,7 @@ class Contract {
       customer_uuid TEXT NOT NULL,
       description TEXT NOT NULL,
       rate_per_trip_minor_units INTEGER,
+      rate_per_ton_minor_units INTEGER,
       is_active INTEGER NOT NULL DEFAULT 1,
       start_date TEXT NOT NULL,
       end_date TEXT
@@ -50,6 +50,7 @@ class Contract {
         'customer_uuid': customerUuid,
         'description': description,
         'rate_per_trip_minor_units': ratePerTripMinorUnits,
+        'rate_per_ton_minor_units': ratePerTonMinorUnits,
         'is_active': isActive ? 1 : 0,
         'start_date': startDate.toIso8601String(),
         'end_date': endDate?.toIso8601String(),
@@ -61,6 +62,7 @@ class Contract {
         customerUuid: map['customer_uuid'] as String,
         description: map['description'] as String,
         ratePerTripMinorUnits: map['rate_per_trip_minor_units'] as int?,
+        ratePerTonMinorUnits: map['rate_per_ton_minor_units'] as int?,
         isActive: (map['is_active'] as int) == 1,
         startDate: DateTime.parse(map['start_date'] as String),
         endDate: map['end_date'] != null ? DateTime.parse(map['end_date'] as String) : null,

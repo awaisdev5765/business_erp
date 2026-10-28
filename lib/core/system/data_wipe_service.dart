@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:sqflite/sqflite.dart';
 
 import 'database.dart';
@@ -22,9 +23,49 @@ class DataWipeService {
   final Database db;
   final FirebaseFirestore firestore;
 
-  /// Drops every local table (enumerated from sqlite_master, so this
-  /// never drifts out of sync with whatever tables createSchema()
-  /// currently defines) and recreates the empty schema.
+  /// Every subcollection [FirestoreSyncService] has ever written under
+  /// `/businesses/{id}/`. Must stay complete — an incomplete list is
+  /// why wipe looked like a no-op: business docs got deleted, but
+  /// leftover collections + a re-created business profile (or a
+  /// partially-failed wipe) could bring data back on the next restore.
+  static const businessSubcollections = [
+    'parties',
+    'products',
+    'journalEntries',
+    'numberSequences',
+    'categories',
+    'brands',
+    'operatingAssets',
+    'trips',
+    'tripExpenses',
+    'fishCategories',
+    'catchEntries',
+    'fishSales',
+    'contracts',
+    'tripIncomes',
+    'weightEntries',
+    'monthlySettlements',
+    'vehicleKhataLines',
+    'paymentRecords',
+    'salaryRecords',
+    'salaryPayments',
+    'fixedAssets',
+    'depreciationEntries',
+    'bankAccounts',
+    'bankStatementLines',
+    'fiscalPeriods',
+    'taxRates',
+    'stockMovements',
+    'sales',
+    'purchases',
+    'refunds',
+    'approvalThresholds',
+    'auditLogs',
+  ];
+
+  /// Drops every local table and recreates an empty schema. On web the
+  /// IndexedDB-backed SQLite file is deleted outright — DROP TABLE alone
+  /// has left stale data in sql.js/IndexedDB in practice.
   Future<void> wipeLocalDatabase() async {
     final tables = await db.rawQuery(
       "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' AND name != 'android_metadata'",
@@ -34,19 +75,21 @@ class DataWipeService {
         await txn.execute('DROP TABLE IF EXISTS "${row['name']}"');
       }
     });
-    await createSchema(db);
-  }
 
-  /// Subcollections written under /businesses/{id}/ — see
-  /// FirestoreSyncService. Kept as an explicit list (rather than
-  /// listing subcollections at runtime, which the client SDK can't do)
-  /// since these are the only ones this app has ever written.
-  static const _businessSubcollections = ['parties', 'products', 'journalEntries', 'numberSequences'];
+    if (kIsWeb) {
+      final path = db.path;
+      await db.close();
+      await databaseFactory.deleteDatabase(path);
+      await AppDatabase.resetAndOpen();
+    } else {
+      await createSchema(db);
+    }
+  }
 
   Future<void> wipeFirestoreData() async {
     final businesses = await firestore.collection('businesses').get();
     for (final business in businesses.docs) {
-      for (final sub in _businessSubcollections) {
+      for (final sub in businessSubcollections) {
         await _deleteCollection(business.reference.collection(sub));
       }
       await business.reference.delete();
@@ -70,23 +113,29 @@ class DataWipeService {
     }
   }
 
+  /// Local first so the device is empty even if Firestore hits a
+  /// permission/network error mid-way — then cloud. Callers should still
+  /// surface cloud failures.
   Future<void> wipeEverything() async {
-    await wipeFirestoreData();
     await wipeLocalDatabase();
+    await wipeFirestoreData();
   }
 
   /// Firestore has no recursive-delete on the client SDK (that's an
   /// Admin SDK / firebase-tools-only feature) — fetch then batch-delete
   /// every doc, chunked well under the 500-write batch limit.
   Future<void> _deleteCollection(CollectionReference<Map<String, Object?>> collection) async {
-    final docs = await collection.get();
-    const chunkSize = 400;
-    for (var i = 0; i < docs.docs.length; i += chunkSize) {
+    // Paginate — a single .get() can miss docs on large collections and
+    // leave orphans that restoreFromCloud later brings back.
+    while (true) {
+      final docs = await collection.limit(400).get();
+      if (docs.docs.isEmpty) return;
       final batch = firestore.batch();
-      for (final doc in docs.docs.skip(i).take(chunkSize)) {
+      for (final doc in docs.docs) {
         batch.delete(doc.reference);
       }
       await batch.commit();
+      if (docs.docs.length < 400) return;
     }
   }
 }

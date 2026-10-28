@@ -4,16 +4,19 @@ import 'package:uuid/uuid.dart';
 import '../../core/accounting/journal_entry.dart';
 import '../../core/accounting/ledger_repository.dart';
 import '../../core/activity/trip_repository.dart';
+import '../../core/sync/sync_queue_item.dart';
+import '../../core/sync/sync_queue_repository.dart';
 import 'fish_sale.dart';
 
 const _uuid = Uuid();
 
 class FishSaleRepository {
-  FishSaleRepository(this.db, this.ledger, this.trips);
+  FishSaleRepository(this.db, this.ledger, this.trips, [this.syncQueue]);
 
   final Database db;
   final LedgerRepository ledger;
   final TripRepository trips;
+  final SyncQueueRepository? syncQueue;
 
   Future<FishSale> create({
     required String businessId,
@@ -52,6 +55,15 @@ class FishSaleRepository {
 
     await db.transaction((txn) async {
       await txn.insert(FishSale.tableName, sale.toMap());
+      if (syncQueue != null) {
+        await syncQueue!.enqueue(
+          txn,
+          businessId: businessId,
+          entityType: 'FishSale',
+          entityId: sale.uuid,
+          operation: SyncOperation.create,
+        );
+      }
 
       await ledger.postWithin(
         txn,

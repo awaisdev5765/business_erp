@@ -1,18 +1,30 @@
 import 'package:sqflite/sqflite.dart';
 import 'package:uuid/uuid.dart';
 
+import '../../core/sync/sync_queue_item.dart';
+import '../../core/sync/sync_queue_repository.dart';
 import 'fish_category.dart';
 
 const _uuid = Uuid();
 
 class FishCategoryRepository {
-  FishCategoryRepository(this.db);
+  FishCategoryRepository(this.db, [this.syncQueue]);
 
   final Database db;
+  final SyncQueueRepository? syncQueue;
 
   Future<FishCategory> create({required String businessId, required String name}) async {
     final category = FishCategory(uuid: _uuid.v4(), businessId: businessId, name: name);
     await db.insert(FishCategory.tableName, category.toMap());
+    if (syncQueue != null) {
+      await syncQueue!.enqueue(
+        db,
+        businessId: businessId,
+        entityType: 'FishCategory',
+        entityId: category.uuid,
+        operation: SyncOperation.create,
+      );
+    }
     return category;
   }
 
@@ -33,9 +45,10 @@ class FishCategoryRepository {
 }
 
 class CatchRepository {
-  CatchRepository(this.db);
+  CatchRepository(this.db, [this.syncQueue]);
 
   final Database db;
+  final SyncQueueRepository? syncQueue;
 
   Future<CatchEntry> record({
     required String tripUuid,
@@ -53,6 +66,15 @@ class CatchRepository {
       estimatedValueMinorUnits: estimatedValueMinorUnits,
     );
     await db.insert(CatchEntry.tableName, entry.toMap());
+    if (syncQueue != null) {
+      await syncQueue!.enqueue(
+        db,
+        businessId: businessId,
+        entityType: 'CatchEntry',
+        entityId: entry.uuid,
+        operation: SyncOperation.create,
+      );
+    }
     return entry;
   }
 

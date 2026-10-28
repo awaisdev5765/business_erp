@@ -2,6 +2,8 @@ import 'package:sqflite/sqflite.dart';
 import 'package:uuid/uuid.dart';
 
 import '../accounting/chart_of_accounts_seed.dart';
+import '../sync/sync_queue_item.dart';
+import '../sync/sync_queue_repository.dart';
 import 'business.dart';
 
 const _uuid = Uuid();
@@ -9,10 +11,19 @@ const _uuid = Uuid();
 /// Until Phase 6, the app only ever had one auto-seeded business and no
 /// way to add another — see PHASES.md "Known gap" notes carried since
 /// Phase 1. This is the Business Switcher's data layer.
+///
+/// [syncQueue] is optional, same opt-in pattern as Party/Product —
+/// without it, a business lives only in this device's local SQLite
+/// (which on web is the experimental IndexedDB-backed sqflite_common_
+/// ffi_web — known to be lossy across a closed/reopened browser tab, see
+/// FirestoreSyncService's restoreFromCloud()). Wiring it in lets the
+/// business itself be re-downloaded from Firestore if local storage is
+/// ever wiped, instead of being unrecoverable.
 class BusinessRepository {
-  BusinessRepository(this.db);
+  BusinessRepository(this.db, [this.syncQueue]);
 
   final Database db;
+  final SyncQueueRepository? syncQueue;
 
   Future<Business> create({
     required String name,
@@ -32,7 +43,18 @@ class BusinessRepository {
       createdAt: now,
       updatedAt: now,
     );
-    await db.insert(Business.tableName, business.toMap());
+    await db.transaction((txn) async {
+      await txn.insert(Business.tableName, business.toMap());
+      if (syncQueue != null) {
+        await syncQueue!.enqueue(
+          txn,
+          businessId: business.uuid,
+          entityType: 'Business',
+          entityId: business.uuid,
+          operation: SyncOperation.create,
+        );
+      }
+    });
     await seedChartOfAccounts(db, business.uuid);
     return business;
   }
@@ -48,6 +70,15 @@ class BusinessRepository {
       where: 'uuid = ?',
       whereArgs: [business.uuid],
     );
+    if (syncQueue != null) {
+      await syncQueue!.enqueue(
+        db,
+        businessId: business.uuid,
+        entityType: 'Business',
+        entityId: business.uuid,
+        operation: SyncOperation.update,
+      );
+    }
   }
 
   Future<List<Business>> list() async {

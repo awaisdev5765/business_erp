@@ -6,11 +6,11 @@ import '../../../shared/currency/currency.dart';
 import '../../../shared/theme/app_theme.dart';
 import '../../../shared/widgets/read_only_banner.dart';
 import 'sale.dart';
+import 'sale_detail_screen.dart';
 
-/// Every Sale for the active business, newest first — the entry point
-/// for returns (SaleRepository.returnSale()), since there was
-/// previously no way to even look up a past sale from the UI (New Sale
-/// only ever built new ones).
+/// Every Sale for the active business, newest first — tapping a row opens
+/// SaleDetailScreen, which is also where refunds (qty-wise or full) now
+/// happen; this list itself is read-only navigation.
 class SalesHistoryScreen extends ConsumerStatefulWidget {
   const SalesHistoryScreen({super.key});
 
@@ -34,39 +34,11 @@ class _SalesHistoryScreenState extends ConsumerState<SalesHistoryScreen> {
     if (mounted) setState(() => _sales = sales);
   }
 
-  Future<void> _confirmReturn(Sale sale) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Return Sale?'),
-        content: Text(
-          'This returns every line on ${sale.documentNumber} — stock goes back, and the original '
-          "journal entry is reversed. There's no undo for this from the app.",
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-          FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: Theme.of(context).colorScheme.error),
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Return'),
-          ),
-        ],
-      ),
+  Future<void> _openDetail(Sale sale) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => SaleDetailScreen(saleUuid: sale.uuid)),
     );
-    if (confirmed != true) return;
-
-    final repo = await ref.read(saleRepositoryProvider.future);
-    try {
-      await repo.returnSale(sale.uuid, returnedBy: currentUser, deviceId: currentDeviceId);
-      await _load();
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('${sale.documentNumber} returned')));
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
-      }
-    }
+    await _load();
   }
 
   @override
@@ -100,9 +72,10 @@ class _SalesHistoryScreenState extends ConsumerState<SalesHistoryScreen> {
                         separatorBuilder: (_, _) => const SizedBox(height: AppSpacing.sm),
                         itemBuilder: (context, index) {
                           final sale = sales[index];
-                          final (label, color) = _statusInfo(sale.status);
+                          final (label, color) = statusInfo(sale.status);
                           return Card(
                             child: ListTile(
+                              onTap: () => _openDetail(sale),
                               contentPadding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg, vertical: AppSpacing.xs),
                               leading: Container(
                                 width: 40,
@@ -112,12 +85,7 @@ class _SalesHistoryScreenState extends ConsumerState<SalesHistoryScreen> {
                               ),
                               title: Text(sale.documentNumber),
                               subtitle: Text('${_formatDate(sale.date)}  •  ${formatMoney(sale.grandTotalMinorUnits, currency)}'),
-                              trailing: sale.status == SaleStatus.posted
-                                  ? OutlinedButton(
-                                      onPressed: isReadOnly ? null : () => _confirmReturn(sale),
-                                      child: const Text('Return'),
-                                    )
-                                  : Chip(label: Text(label), backgroundColor: color.withValues(alpha: 0.1), side: BorderSide.none),
+                              trailing: Chip(label: Text(label), backgroundColor: color.withValues(alpha: 0.1), side: BorderSide.none),
                             ),
                           );
                         },
@@ -126,19 +94,6 @@ class _SalesHistoryScreenState extends ConsumerState<SalesHistoryScreen> {
         ],
       ),
     );
-  }
-}
-
-(String, Color) _statusInfo(SaleStatus status) {
-  switch (status) {
-    case SaleStatus.posted:
-      return ('Posted', AppColors.accent);
-    case SaleStatus.pendingApproval:
-      return ('Pending Approval', AppColors.warning);
-    case SaleStatus.returned:
-      return ('Returned', AppColors.destructive);
-    case SaleStatus.void_:
-      return ('Void', Colors.grey);
   }
 }
 

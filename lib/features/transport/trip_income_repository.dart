@@ -4,16 +4,19 @@ import 'package:uuid/uuid.dart';
 import '../../core/accounting/journal_entry.dart';
 import '../../core/accounting/ledger_repository.dart';
 import '../../core/activity/trip_repository.dart';
+import '../../core/sync/sync_queue_item.dart';
+import '../../core/sync/sync_queue_repository.dart';
 import 'trip_income.dart';
 
 const _uuid = Uuid();
 
 class TripIncomeRepository {
-  TripIncomeRepository(this.db, this.ledger, this.trips);
+  TripIncomeRepository(this.db, this.ledger, this.trips, [this.syncQueue]);
 
   final Database db;
   final LedgerRepository ledger;
   final TripRepository trips;
+  final SyncQueueRepository? syncQueue;
 
   Future<TripIncome> create({
     required String businessId,
@@ -50,6 +53,15 @@ class TripIncomeRepository {
 
     await db.transaction((txn) async {
       await txn.insert(TripIncome.tableName, income.toMap());
+      if (syncQueue != null) {
+        await syncQueue!.enqueue(
+          txn,
+          businessId: businessId,
+          entityType: 'TripIncome',
+          entityId: income.uuid,
+          operation: SyncOperation.create,
+        );
+      }
 
       await ledger.postWithin(
         txn,

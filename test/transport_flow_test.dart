@@ -6,8 +6,6 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:business_erp/core/accounting/chart_of_accounts_seed.dart';
 import 'package:business_erp/core/accounting/ledger_repository.dart';
 import 'package:business_erp/core/activity/trip.dart';
-import 'package:business_erp/core/activity/trip_expense.dart';
-import 'package:business_erp/core/activity/trip_expense_repository.dart';
 import 'package:business_erp/core/activity/trip_repository.dart';
 import 'package:business_erp/core/asset/operating_asset.dart';
 import 'package:business_erp/core/asset/operating_asset_repository.dart';
@@ -15,10 +13,13 @@ import 'package:business_erp/core/party/party.dart';
 import 'package:business_erp/core/party/party_repository.dart';
 import 'package:business_erp/core/system/database.dart';
 import 'package:business_erp/features/transport/contract_repository.dart';
-import 'package:business_erp/features/transport/driver_performance_service.dart';
+import 'package:business_erp/features/transport/monthly_settlement_repository.dart';
 import 'package:business_erp/features/transport/trip_income.dart';
 import 'package:business_erp/features/transport/trip_income_repository.dart';
+import 'package:business_erp/features/transport/vehicle_khata_line.dart';
+import 'package:business_erp/features/transport/vehicle_khata_repository.dart';
 import 'package:business_erp/features/transport/vehicle_profitability_service.dart';
+import 'package:business_erp/features/transport/weight_entry_repository.dart';
 
 void main() {
   late Database db;
@@ -29,13 +30,12 @@ void main() {
 
   late LedgerRepository ledger;
   late OperatingAssetRepository assets;
-  late TripRepository trips;
   late PartyRepository parties;
-  late TripExpenseRepository tripExpenses;
   late ContractRepository contracts;
-  late TripIncomeRepository tripIncomes;
+  late WeightEntryRepository weightEntries;
+  late VehicleKhataRepository khata;
+  late MonthlySettlementRepository settlements;
   late VehicleProfitabilityService vehicleProfitability;
-  late DriverPerformanceService driverPerformance;
 
   setUpAll(() {
     sqfliteFfiInit();
@@ -52,13 +52,14 @@ void main() {
 
     ledger = LedgerRepository(db);
     assets = OperatingAssetRepository(db);
-    trips = TripRepository(db);
+    final trips = TripRepository(db);
     parties = PartyRepository(db);
-    tripExpenses = TripExpenseRepository(db, ledger, trips);
     contracts = ContractRepository(db);
-    tripIncomes = TripIncomeRepository(db, ledger, trips);
-    vehicleProfitability = VehicleProfitabilityService(tripIncomes, tripExpenses);
-    driverPerformance = DriverPerformanceService(tripIncomes, tripExpenses);
+    weightEntries = WeightEntryRepository(db);
+    khata = VehicleKhataRepository(db, ledger);
+    settlements = MonthlySettlementRepository(db, ledger, weightEntries, khata);
+    final tripIncomes = TripIncomeRepository(db, ledger, trips);
+    vehicleProfitability = VehicleProfitabilityService(tripIncomes, khata);
   });
 
   tearDown(() async {
@@ -66,127 +67,147 @@ void main() {
     await tempDir.delete(recursive: true);
   });
 
-  test('full transport trip: vehicle + driver + contract registered, expenses '
-      '(fuel/repair/tyre/oil) and trip income post to the right accounts, Vehicle '
-      'Ledger shows everything, and Vehicle Profitability / Driver Performance roll up '
-      'correctly across two trips', () async {
-    final vehicle = await assets.create(businessId: businessId, type: OperatingAssetType.vehicle, name: 'Truck 01');
-    final driver = await parties.create(businessId: businessId, type: PartyType.driver, name: 'Driver Perera');
-    final company = await parties.create(businessId: businessId, type: PartyType.customer, name: 'Acme Logistics');
-    final contract = await contracts.create(
+  test('company bills stay a log; month hisaab + gari khata match the Excel books', () async {
+    final truck1 = await assets.create(
+      businessId: businessId,
+      type: OperatingAssetType.vehicle,
+      name: 'C-2319',
+      registrationNumber: 'C-2319',
+    );
+    final truck2 = await assets.create(
+      businessId: businessId,
+      type: OperatingAssetType.vehicle,
+      name: 'TTA-598',
+      registrationNumber: 'TTA-598',
+    );
+    final company = await parties.create(businessId: businessId, type: PartyType.customer, name: 'A & S Oil Mills');
+    await contracts.create(
       businessId: businessId,
       customerUuid: company.uuid,
-      description: 'Weekly Colombo-Kandy haul',
-      ratePerTripMinorUnits: 20000,
+      description: 'A & S Oil Mills',
+      ratePerTonMinorUnits: 250000, // Rs 2,500 / ton
     );
 
-    // Trip 1: fuel + repair expenses, cash trip income.
-    final trip1 = await trips.create(
+    await weightEntries.create(
       businessId: businessId,
-      tripType: TripType.transport,
-      assetUuid: vehicle.uuid,
-      captainUuid: driver.uuid,
+      vehicleUuid: truck1.uuid,
+      companyUuid: company.uuid,
+      weightKg: 10000,
+      date: DateTime(2026, 3, 2),
     );
-    await trips.start(trip1.uuid);
-
-    await tripExpenses.record(
+    await weightEntries.create(
       businessId: businessId,
-      tripUuid: trip1.uuid,
-      category: TripExpenseCategory.fuel,
-      amountMinorUnits: 4000,
+      vehicleUuid: truck1.uuid,
+      companyUuid: company.uuid,
+      weightKg: 12500,
+      date: DateTime(2026, 3, 10),
+    );
+    await weightEntries.create(
+      businessId: businessId,
+      vehicleUuid: truck2.uuid,
+      companyUuid: company.uuid,
+      weightKg: 8000,
+      date: DateTime(2026, 3, 18),
+    );
+
+    expect(await ledger.accountBalanceMinorUnits(businessId: businessId, accountCode: '4020'), 0);
+    expect(await parties.outstandingBalanceMinorUnits(company.uuid), 0);
+
+    await khata.setOpening(businessId: businessId, vehicleUuid: truck1.uuid, amountMinorUnits: 215543300);
+    await khata.addKharcha(
+      businessId: businessId,
+      vehicleUuid: truck1.uuid,
+      tafseel: 'Local Kharcha',
+      amountMinorUnits: 400000,
       createdBy: user,
       deviceId: deviceId,
+      date: DateTime(2026, 8, 3),
     );
-    await tripExpenses.record(
+    await khata.addKharcha(
       businessId: businessId,
-      tripUuid: trip1.uuid,
-      category: TripExpenseCategory.repair,
-      amountMinorUnits: 1500,
+      vehicleUuid: truck1.uuid,
+      tafseel: 'Peshgi di',
+      amountMinorUnits: 7000000,
       createdBy: user,
       deviceId: deviceId,
+      date: DateTime(2026, 8, 4),
     );
 
-    await tripIncomes.create(
+    final beforeSettle = await khata.statement(truck1.uuid);
+    expect(beforeSettle.last.runningBalanceMinorUnits, 215543300 - 400000 - 7000000);
+
+    var truck1Profit = await vehicleProfitability.forAsset(truck1.uuid);
+    expect(truck1Profit.revenueMinorUnits, 0);
+    expect(truck1Profit.expenseMinorUnits, 7400000);
+
+    final settlement = await settlements.settle(
       businessId: businessId,
-      tripUuid: trip1.uuid,
-      contractUuid: contract.uuid,
-      amountMinorUnits: 20000,
-      paymentMethod: TripIncomePaymentMethod.cash,
+      companyUuid: company.uuid,
+      year: 2026,
+      month: 3,
+      ratePerTonMinorUnits: 250000,
       createdBy: user,
       deviceId: deviceId,
-    );
-    await trips.complete(trip1.uuid);
-
-    final fuelBalance = await ledger.accountBalanceMinorUnits(businessId: businessId, accountCode: '5020');
-    expect(fuelBalance, 4000);
-    final repairBalance = await ledger.accountBalanceMinorUnits(businessId: businessId, accountCode: '5060');
-    expect(repairBalance, 1500);
-    final tripIncomeBalance = await ledger.accountBalanceMinorUnits(businessId: businessId, accountCode: '4020');
-    expect(tripIncomeBalance, -20000);
-
-    // Trip 2: tyre + oil expenses, credit trip income to the same company.
-    final trip2 = await trips.create(
-      businessId: businessId,
-      tripType: TripType.transport,
-      assetUuid: vehicle.uuid,
-      captainUuid: driver.uuid,
-    );
-    await trips.start(trip2.uuid);
-
-    await tripExpenses.record(
-      businessId: businessId,
-      tripUuid: trip2.uuid,
-      category: TripExpenseCategory.tyre,
-      amountMinorUnits: 3000,
-      createdBy: user,
-      deviceId: deviceId,
-    );
-    await tripExpenses.record(
-      businessId: businessId,
-      tripUuid: trip2.uuid,
-      category: TripExpenseCategory.oil,
-      amountMinorUnits: 800,
-      createdBy: user,
-      deviceId: deviceId,
+      companyName: 'A & S Oil Mills',
     );
 
-    await tripIncomes.create(
-      businessId: businessId,
-      tripUuid: trip2.uuid,
-      customerUuid: company.uuid,
-      contractUuid: contract.uuid,
-      amountMinorUnits: 20000,
-      paymentMethod: TripIncomePaymentMethod.credit,
-      createdBy: user,
-      deviceId: deviceId,
+    // 10,000 + 12,500 + 8,000 kg = 30.5 ton × 2,500 = 76,250
+    expect(settlement.totalWeightKg, 30500);
+    expect(settlement.amountMinorUnits, 7625000);
+    expect(await parties.outstandingBalanceMinorUnits(company.uuid), 7625000);
+
+    truck1Profit = await vehicleProfitability.forAsset(truck1.uuid);
+    expect(truck1Profit.revenueMinorUnits, 5625000); // 22.5 ton × 2500
+    expect(truck1Profit.expenseMinorUnits, 7400000);
+
+    final truck1Sheet = await khata.statement(truck1.uuid);
+    final billJama = truck1Sheet.map((r) => r.line).firstWhere((l) => l.sourceType == 'MonthlySettlement');
+    expect(billJama.kind, VehicleKhataKind.jama);
+    expect(billJama.tafseel, contains('A & S Oil Mills'));
+    expect(billJama.jamaMinorUnits, 5625000);
+
+    final truck2Sheet = await khata.statement(truck2.uuid);
+    expect(truck2Sheet.single.line.jamaMinorUnits, 2000000);
+
+    expect(
+      () => settlements.settle(
+        businessId: businessId,
+        companyUuid: company.uuid,
+        year: 2026,
+        month: 3,
+        ratePerTonMinorUnits: 250000,
+        createdBy: user,
+        deviceId: deviceId,
+      ),
+      throwsStateError,
     );
-    await trips.complete(trip2.uuid);
-
-    final companyReceivable = await parties.outstandingBalanceMinorUnits(company.uuid);
-    expect(companyReceivable, 20000); // only trip2 was credit
-
-    // Vehicle Ledger: every account touched by this vehicle across both trips.
-    final vehicleLedger = await ledger.dimensionStatement(businessId: businessId, dimensionUuid: vehicle.uuid);
-    final accountCodes = vehicleLedger.map((row) => row['account_code']).toSet();
-    expect(accountCodes, {'5020', '5060', '1010', '4020', '5070', '5080', '1030'});
-
-    // Vehicle Profitability across both trips:
-    // revenue = 20000 + 20000 = 40000; expenses = 4000+1500+3000+800 = 9300.
-    final vehicleProfit = await vehicleProfitability.forAsset(vehicle.uuid);
-    expect(vehicleProfit.revenueMinorUnits, 40000);
-    expect(vehicleProfit.expenseMinorUnits, 9300);
-    expect(vehicleProfit.profitMinorUnits, 30700);
-
-    // Driver Performance should match exactly (same driver on both trips).
-    final driverPerf = await driverPerformance.forDriver(driver.uuid);
-    expect(driverPerf.revenueMinorUnits, 40000);
-    expect(driverPerf.expenseMinorUnits, 9300);
-    expect(driverPerf.profitMinorUnits, 30700);
   });
 
-  test('credit trip income requires a customer', () async {
+  test('month hisaab without pending weight is rejected', () async {
+    final company = await parties.create(businessId: businessId, type: PartyType.customer, name: 'No Loads Co');
+    expect(
+      () => settlements.settle(
+        businessId: businessId,
+        companyUuid: company.uuid,
+        year: 2026,
+        month: 4,
+        ratePerTonMinorUnits: 100000,
+        createdBy: user,
+        deviceId: deviceId,
+      ),
+      throwsStateError,
+    );
+  });
+
+  test('credit trip income still requires a customer (legacy)', () async {
     final vehicle = await assets.create(businessId: businessId, type: OperatingAssetType.vehicle, name: 'Truck 01');
-    final trip = await trips.create(businessId: businessId, tripType: TripType.transport, assetUuid: vehicle.uuid);
+    final trips = TripRepository(db);
+    final tripIncomes = TripIncomeRepository(db, ledger, trips);
+    final trip = await trips.create(
+      businessId: businessId,
+      tripType: TripType.transport,
+      assetUuid: vehicle.uuid,
+    );
 
     expect(
       () => tripIncomes.create(
@@ -199,5 +220,105 @@ void main() {
       ),
       throwsArgumentError,
     );
+  });
+
+  test('unsettled weight bill can be edited and deleted', () async {
+    final company = await parties.create(businessId: businessId, type: PartyType.customer, name: 'Edit Co');
+    final truck = await assets.create(
+      businessId: businessId,
+      type: OperatingAssetType.vehicle,
+      name: 'Edit Truck',
+      registrationNumber: 'ED-1',
+    );
+    final entry = await weightEntries.create(
+      businessId: businessId,
+      vehicleUuid: truck.uuid,
+      companyUuid: company.uuid,
+      weightKg: 10000,
+      date: DateTime(2026, 5, 1),
+    );
+
+    final updated = await weightEntries.update(
+      uuid: entry.uuid,
+      vehicleUuid: truck.uuid,
+      companyUuid: company.uuid,
+      weightKg: 12000,
+      date: DateTime(2026, 5, 2),
+    );
+    expect(updated.weightKg, 12000);
+    expect(updated.date, DateTime(2026, 5, 2));
+
+    await weightEntries.delete(entry.uuid);
+    expect(await weightEntries.findByUuid(entry.uuid), isNull);
+  });
+
+  test('settled weight bill is locked; manual khata can edit/delete', () async {
+    final company = await parties.create(businessId: businessId, type: PartyType.customer, name: 'Lock Co');
+    final truck = await assets.create(
+      businessId: businessId,
+      type: OperatingAssetType.vehicle,
+      name: 'Lock Truck',
+      registrationNumber: 'LK-1',
+    );
+    final entry = await weightEntries.create(
+      businessId: businessId,
+      vehicleUuid: truck.uuid,
+      companyUuid: company.uuid,
+      weightKg: 10000,
+      date: DateTime(2026, 6, 1),
+    );
+    await settlements.settle(
+      businessId: businessId,
+      companyUuid: company.uuid,
+      year: 2026,
+      month: 6,
+      ratePerTonMinorUnits: 100000,
+      createdBy: user,
+      deviceId: deviceId,
+      companyName: 'Lock Co',
+    );
+
+    expect(
+      () => weightEntries.update(
+        uuid: entry.uuid,
+        vehicleUuid: truck.uuid,
+        companyUuid: company.uuid,
+        weightKg: 9000,
+        date: DateTime(2026, 6, 1),
+      ),
+      throwsStateError,
+    );
+    expect(() => weightEntries.delete(entry.uuid), throwsStateError);
+
+    final kharcha = await khata.addKharcha(
+      businessId: businessId,
+      vehicleUuid: truck.uuid,
+      tafseel: 'Diesel',
+      amountMinorUnits: 500000,
+      createdBy: user,
+      deviceId: deviceId,
+      date: DateTime(2026, 6, 10),
+    );
+    final edited = await khata.updateManual(
+      uuid: kharcha.uuid,
+      tafseel: 'Diesel + oil',
+      amountMinorUnits: 600000,
+      date: DateTime(2026, 6, 11),
+      createdBy: user,
+      deviceId: deviceId,
+    );
+    expect(edited.tafseel, 'Diesel + oil');
+    expect(edited.kharchaMinorUnits, 600000);
+
+    final settlementJama = (await khata.statement(truck.uuid))
+        .map((r) => r.line)
+        .firstWhere((l) => l.sourceType == 'MonthlySettlement');
+    expect(
+      () => khata.deleteManual(uuid: settlementJama.uuid, deletedBy: user),
+      throwsStateError,
+    );
+
+    await khata.deleteManual(uuid: kharcha.uuid, deletedBy: user);
+    expect(await khata.findByUuid(kharcha.uuid), isNull);
   });
 }

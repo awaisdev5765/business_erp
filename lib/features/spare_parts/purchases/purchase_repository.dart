@@ -3,6 +3,8 @@ import 'package:uuid/uuid.dart';
 
 import '../../../core/accounting/journal_entry.dart';
 import '../../../core/accounting/ledger_repository.dart';
+import '../../../core/sync/sync_queue_item.dart';
+import '../../../core/sync/sync_queue_repository.dart';
 import '../../../core/system/audit_log_repository.dart';
 import '../../../core/system/number_sequence_service.dart';
 import '../inventory/product.dart';
@@ -33,13 +35,17 @@ class PurchaseLineInput {
 /// tax filing needs that breakdown — that's future Tax Summary report
 /// work, not a Phase 2 goal.
 class PurchaseRepository {
-  PurchaseRepository(this.db, this.ledger, this.products, this.numbering, [this.auditLog]);
+  PurchaseRepository(this.db, this.ledger, this.products, this.numbering, [this.auditLog, this.syncQueue]);
 
   final Database db;
   final LedgerRepository ledger;
   final ProductRepository products;
   final NumberSequenceService numbering;
   final AuditLogRepository? auditLog;
+
+  /// Optional, opt-in — see FirestoreSyncService.restoreFromCloud() for
+  /// why a Purchase enqueues itself the same way Party/Product do.
+  final SyncQueueRepository? syncQueue;
 
   Future<Purchase> create({
     required String businessId,
@@ -92,6 +98,15 @@ class PurchaseRepository {
       await txn.insert(Purchase.tableName, purchase.toMap());
       for (final line in lines) {
         await txn.insert(PurchaseLine.tableName, line.toMap());
+      }
+      if (syncQueue != null) {
+        await syncQueue!.enqueue(
+          txn,
+          businessId: businessId,
+          entityType: 'Purchase',
+          entityId: uuid,
+          operation: SyncOperation.create,
+        );
       }
 
       for (final line in lineInputs) {

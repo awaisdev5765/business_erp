@@ -1,0 +1,577 @@
+<!DOCTYPE html>
+<html lang="ur">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Transport Khata — Poori Guide</title>
+  <style>
+    :root {
+      --ink: #1a1a1a;
+      --muted: #5a5a5a;
+      --bg: #f7f3ea;
+      --card: #ffffff;
+      --accent: #0b6e4f;
+      --accent-soft: #d8f3e7;
+      --warn: #9a3412;
+      --warn-bg: #fff7ed;
+      --line: #e5dfd3;
+      --blue: #1d4ed8;
+      --blue-bg: #eff6ff;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Segoe UI", Tahoma, Arial, sans-serif;
+      background: var(--bg);
+      color: var(--ink);
+      line-height: 1.6;
+    }
+    header {
+      background: var(--accent);
+      color: white;
+      padding: 28px 20px 32px;
+      text-align: center;
+    }
+    header h1 { margin: 0 0 8px; font-size: 1.75rem; }
+    header p { margin: 0; opacity: 0.95; font-size: 1.05rem; }
+    .header-actions { margin-top: 14px; display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
+    .print-btn, .wa-btn {
+      display: inline-block;
+      border: none;
+      border-radius: 999px;
+      padding: 10px 18px;
+      font-weight: 700;
+      cursor: pointer;
+      text-decoration: none;
+      font-size: 0.95rem;
+    }
+    .print-btn { background: white; color: var(--accent); }
+    .wa-btn { background: #25D366; color: white; }
+    main {
+      max-width: 860px;
+      margin: 0 auto;
+      padding: 20px 16px 64px;
+    }
+    .big { font-size: 1.08rem; }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 18px;
+      margin: 16px 0;
+      box-shadow: 0 1px 0 rgba(0,0,0,0.03);
+    }
+    .step-num {
+      display: inline-flex;
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      background: var(--accent);
+      color: white;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      margin-right: 10px;
+      flex-shrink: 0;
+    }
+    h2 {
+      margin: 0 0 12px;
+      font-size: 1.3rem;
+      display: flex;
+      align-items: center;
+    }
+    h3 {
+      margin: 20px 0 8px;
+      font-size: 1.08rem;
+      color: var(--accent);
+    }
+    h3:first-of-type { margin-top: 8px; }
+    ul, ol { padding-left: 1.25rem; }
+    li { margin: 7px 0; }
+    p { margin: 8px 0; }
+    .note {
+      background: var(--warn-bg);
+      border-left: 4px solid var(--warn);
+      padding: 12px 14px;
+      border-radius: 8px;
+      margin: 12px 0;
+    }
+    .ok {
+      background: var(--accent-soft);
+      border-left: 4px solid var(--accent);
+      padding: 12px 14px;
+      border-radius: 8px;
+      margin: 12px 0;
+    }
+    .tip {
+      background: var(--blue-bg);
+      border-left: 4px solid var(--blue);
+      padding: 12px 14px;
+      border-radius: 8px;
+      margin: 12px 0;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.95rem;
+      margin: 10px 0 4px;
+    }
+    th, td {
+      border: 1px solid var(--line);
+      padding: 8px 10px;
+      text-align: left;
+    }
+    th { background: #f3f0e8; }
+    .menu {
+      display: grid;
+      gap: 10px;
+      grid-template-columns: 1fr;
+    }
+    @media (min-width: 640px) {
+      .menu { grid-template-columns: 1fr 1fr; }
+    }
+    .menu-item {
+      background: #f8faf8;
+      border: 1px dashed var(--line);
+      border-radius: 10px;
+      padding: 12px;
+    }
+    .menu-item strong { display: block; color: var(--accent); margin-bottom: 4px; }
+    .toc a {
+      display: block;
+      padding: 6px 0;
+      color: var(--ink);
+      text-decoration: none;
+      border-bottom: 1px solid var(--line);
+    }
+    .toc a:hover { color: var(--accent); }
+    .toc .num { color: var(--accent); font-weight: 700; margin-right: 6px; }
+    footer {
+      text-align: center;
+      color: var(--muted);
+      font-size: 0.95rem;
+      padding: 8px 16px 48px;
+    }
+    a { color: var(--accent); }
+    code {
+      background: #f3f0e8;
+      padding: 1px 6px;
+      border-radius: 4px;
+      font-size: 0.92em;
+    }
+    .kbd {
+      display: inline-block;
+      background: #eee;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      padding: 0 6px;
+      font-size: 0.9em;
+    }
+    @media print {
+      header { padding: 16px; }
+      .header-actions, .print-btn, .wa-btn { display: none !important; }
+      .card { break-inside: avoid; box-shadow: none; }
+      body { background: white; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Transport Khata — Poori Guide</h1>
+    <p>Excel / register jaisa kaam — phone aur computer pe</p>
+    <p style="margin-top:8px;font-size:0.95rem;opacity:0.9">App: <strong>https://buyappsc.web.app</strong></p>
+    <div class="header-actions">
+      <button class="print-btn" type="button" onclick="window.print()">Print / PDF save</button>
+      <a class="wa-btn" href="https://wa.me/923312544969" target="_blank" rel="noopener">WhatsApp Support · 0331 2544969</a>
+    </div>
+  </header>
+
+  <main class="big">
+    <div class="ok">
+      <strong>Do alag kitaabein</strong> — bilkul aapke Excel jaisi:
+      <br />1) <strong>Company Bills</strong> — rozana weight (kg) log
+      <br />2) <strong>Gari Khata</strong> — har gaari ka alag khata (Kharcha / Jama / Baqaya)
+      <br />Mahine ke end pe <strong>Month Hisaab</strong>: total kg × rate/ton = company bill + gaari pe Jama.
+    </div>
+
+    <section class="card" id="toc">
+      <h2>Is guide mein kya hai</h2>
+      <nav class="toc">
+        <a href="#phone"><span class="num">A</span> Phone vs Computer</a>
+        <a href="#setup"><span class="num">0</span> Pehli dafa setup</a>
+        <a href="#menu"><span class="num">1</span> Menu kya kya hai</a>
+        <a href="#gaari"><span class="num">2</span> Gaari add karo</a>
+        <a href="#company"><span class="num">3</span> Company + rate</a>
+        <a href="#bills"><span class="num">4</span> Rozana Company Bills</a>
+        <a href="#khata"><span class="num">5</span> Gari Khata (Kharcha / Jama)</a>
+        <a href="#hisaab"><span class="num">6</span> Month Hisaab (settle)</a>
+        <a href="#payment"><span class="num">7</span> Company se payment</a>
+        <a href="#print"><span class="num">8</span> Print / PDF</a>
+        <a href="#edit"><span class="num">9</span> Edit / Delete</a>
+        <a href="#offline"><span class="num">10</span> Offline + sync</a>
+        <a href="#daily"><span class="num">★</span> Roz ka short rule</a>
+        <a href="#faq"><span class="num">?</span> Masle / sawalat</a>
+      </nav>
+    </section>
+
+    <section class="card" id="phone">
+      <h2><span class="step-num">A</span> Phone vs Computer</h2>
+      <h3>Phone (chhoti screen)</h3>
+      <ul>
+        <li>Neeche 4 bade buttons: <strong>Khata</strong>, <strong>Bills</strong>, <strong>Hisaab</strong>, <strong>Customers</strong>.</li>
+        <li>Baaki cheezein (<strong>Company Rates</strong>, Drivers, Cash Book, Sync…) → <strong>More</strong>.</li>
+        <li>Upar green <strong>WhatsApp Support</strong> bar — seedha chat: <strong>0331 2544969</strong>.</li>
+      </ul>
+      <h3>Computer / laptop</h3>
+      <ul>
+        <li>Left side poora menu dikhta hai.</li>
+        <li>Same kaam — sirf buttons zyada dikhte hain.</li>
+      </ul>
+      <div class="tip">
+        App Chrome / Safari mein kholo. Phone pe “Add to Home Screen” se icon bana sakte ho.
+      </div>
+    </section>
+
+    <section class="card" id="setup">
+      <h2><span class="step-num">0</span> Pehli dafa setup</h2>
+      <ol>
+        <li>Link kholo: <a href="https://buyappsc.web.app">https://buyappsc.web.app</a></li>
+        <li>Apna email / password se <strong>login</strong> karo.</li>
+        <li>Agar naya business banana ho: type <strong>Transport</strong> choose karo.</li>
+        <li>Currency <strong>PKR</strong> rakho.</li>
+        <li>Pehle <strong>gaariyan</strong> add karo, phir <strong>companies</strong>, phir rates — uske baad rozana bills.</li>
+      </ol>
+      <div class="note">
+        Login ke baghair data save nahi hota. Har staff ko apna account / access chahiye (office se).
+      </div>
+    </section>
+
+    <section class="card" id="menu">
+      <h2><span class="step-num">1</span> Menu — har button ka matlab</h2>
+      <div class="menu">
+        <div class="menu-item">
+          <strong>Gari Khata</strong>
+          Har gaari ka alag sheet (jaise Excel tabs: C-2319, TTA-598). Kharcha, Jama, Total Baqaya.
+        </div>
+        <div class="menu-item">
+          <strong>Company Bills</strong>
+          Rozana log: Date · Gaari No · Weight (kg) · Company. Yahan paisa nahi lagta.
+        </div>
+        <div class="menu-item">
+          <strong>Month Hisaab</strong>
+          Mahine ke end: total kg × rate/ton = company bill + har gaari pe Jama.
+        </div>
+        <div class="menu-item">
+          <strong>Company Rates</strong>
+          Company ka default <strong>rate per ton</strong> save — Month Hisaab mein auto aata hai.
+        </div>
+        <div class="menu-item">
+          <strong>Customers</strong>
+          Companies add (A &amp; S Oil Mills wagaira) + company khata / payment.
+        </div>
+        <div class="menu-item">
+          <strong>Drivers</strong>
+          Driver names (optional) — payroll ke liye.
+        </div>
+      </div>
+    </section>
+
+    <section class="card" id="gaari">
+      <h2><span class="step-num">2</span> Gaari add karo</h2>
+      <ol>
+        <li><strong>Gari Khata</strong> kholo.</li>
+        <li>Neeche <strong>+</strong> dabao.</li>
+        <li><strong>Name</strong> aur <strong>Registration number</strong> likho — jaise <code>C-2319</code> ya <code>TTA-598</code>.</li>
+        <li><strong>Save</strong>.</li>
+      </ol>
+      <div class="tip">
+        Tip: Registration number wohi likho jo Excel / number plate pe hai — list mein wahi dikhega.
+      </div>
+      <h3>Gaariyan ke beech swipe</h3>
+      <p>
+        List se ek gaari kholo. Upar “Gaari 1/3 — swipe left/right” dikhega.
+        <strong>Left / right swipe</strong> se agli / pichhli gaari khul jati hai — Excel tabs jaisa.
+      </p>
+    </section>
+
+    <section class="card" id="company">
+      <h2><span class="step-num">3</span> Company add + rate</h2>
+      <h3>Company</h3>
+      <ol>
+        <li><strong>Customers</strong> → <strong>+</strong>.</li>
+        <li>Company ka naam — jaise <strong>A &amp; S Oil Mills</strong>.</li>
+        <li>Save.</li>
+      </ol>
+      <h3>Rate per ton</h3>
+      <ol>
+        <li><strong>Company Rates</strong> (phone pe: More → Company Rates).</li>
+        <li>Company choose / add karke <strong>Rate per ton</strong> likho (jaise 2500).</li>
+        <li>Save.</li>
+      </ol>
+      <div class="ok">
+        Ye rate Month Hisaab mein pehle se bhar jata hai. Settle se pehle change bhi kar sakte ho.
+      </div>
+    </section>
+
+    <section class="card" id="bills">
+      <h2><span class="step-num">4</span> Rozana — Company Bills</h2>
+      <p>Jaise aapka Excel sheet “COMPANY BILLS”:</p>
+      <table>
+        <thead>
+          <tr><th>Date</th><th>Vehicle No</th><th>Weight (kg)</th><th>Company</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>01/07/2026</td><td>TTD-735</td><td>37450</td><td>A &amp; S Oil Mills</td></tr>
+          <tr><td>01/07/2026</td><td>TUB-196</td><td>31540</td><td>A &amp; S Oil Mills</td></tr>
+        </tbody>
+      </table>
+
+      <h3>Naya bill likhne ka tareeqa</h3>
+      <ol>
+        <li><strong>Company Bills</strong> kholo.</li>
+        <li>Neeche <strong>Naya Bill</strong> dabao.</li>
+        <li><strong>Date</strong> choose karo.</li>
+        <li><strong>Gaari No</strong> choose karo.</li>
+        <li><strong>Company</strong> choose karo.</li>
+        <li><strong>Weight (kg)</strong> likho — jaise <code>37450</code> (ton nahi, <strong>kg</strong>).</li>
+        <li><strong>Save</strong>.</li>
+      </ol>
+      <div class="ok">
+        Yahan <strong>sirf weight</strong> likha jata hai. Paisa / bill amount Month Hisaab pe lagta hai.
+      </div>
+
+      <h3>Filter</h3>
+      <ul>
+        <li>Upar se <strong>Gaari</strong> / <strong>Company</strong> filter — “Sab” = tamam.</li>
+        <li><strong>Date filter</strong> — range choose karke purani entries dhoondho.</li>
+        <li>Clear (✕) se filter hatao.</li>
+      </ul>
+
+      <h3>Status</h3>
+      <ul>
+        <li><strong>Pending</strong> — abhi Month Hisaab nahi hua.</li>
+        <li><strong>Settled</strong> — mahine mein settle ho chuka; ab change / delete nahi.</li>
+      </ul>
+
+      <h3>Payment shortcut</h3>
+      <p>Bill card pe <strong>Payment</strong> dabao → us company ka khata khul jata hai (paisa receive karne ke liye).</p>
+    </section>
+
+    <section class="card" id="khata">
+      <h2><span class="step-num">5</span> Gari Khata</h2>
+      <p>Jaise Excel mein har gaari ka alag tab — Date | Tafseel | Kharcha | Jama | Total:</p>
+      <table>
+        <thead>
+          <tr><th>Date</th><th>Tafseel</th><th>Kharcha</th><th>Jama</th><th>Total / Baqaya</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>—</td><td>Pichla baqaya</td><td></td><td></td><td>2,155,433</td></tr>
+          <tr><td>03/08/2026</td><td>Local Kharcha</td><td>4,000</td><td></td><td>2,151,433</td></tr>
+          <tr><td>04/08/2026</td><td>Peshgi di</td><td>70,000</td><td></td><td>2,081,433</td></tr>
+        </tbody>
+      </table>
+
+      <h3>Khata kholna</h3>
+      <ol>
+        <li><strong>Gari Khata</strong> list se gaari pe tap.</li>
+        <li>Upar bada number = <strong>Total Raqam / Baqaya</strong> (running balance).</li>
+      </ol>
+
+      <h3>Opening (pichla baqaya)</h3>
+      <ol>
+        <li>Pehli dafa: AppBar pe <strong>Opening</strong> dabao.</li>
+        <li>Pichla baqaya likho. Agar udhaar / minus ho to <code>-</code> use karo.</li>
+        <li>Opening ek dafa set hota hai.</li>
+      </ol>
+
+      <h3>Kharcha likhna</h3>
+      <ol>
+        <li>Neeche <strong>Kharcha</strong> dabao.</li>
+        <li>Date, <strong>Tafseel</strong>, Raqam likho.</li>
+        <li>Jaldi ke liye neeche <strong>chips</strong> dabao — Local kharcha, Diesel, Peshgi, Driver salary, Commission, Mistri…</li>
+        <li>Save.</li>
+      </ol>
+
+      <h3>Jama likhna</h3>
+      <ol>
+        <li>Neeche <strong>Jama</strong> dabao.</li>
+        <li>Jab paisa aaye / bill receive ho (manual entry).</li>
+        <li>Note: Month Hisaab ke baad <strong>company bill ka Jama khud</strong> gaari pe lag jata hai — woh entry yahan se change nahi hoti.</li>
+      </ol>
+
+      <div class="note">
+        <strong>Total ka formula:</strong> pehle wala total − Kharcha + Jama.
+        <br />Balance minus (negative) bhi ho sakta hai — Excel jaisa.
+      </div>
+
+      <h3>Date filter + company payment</h3>
+      <ul>
+        <li><strong>Date filter</strong> se sirf ek range dikhao.</li>
+        <li>AppBar pe <strong>payment</strong> icon → company choose → company khata (payment receive).</li>
+      </ul>
+    </section>
+
+    <section class="card" id="hisaab">
+      <h2><span class="step-num">6</span> Month Hisaab (mahine ka settle)</h2>
+      <p>Excel jaisa: saare kg jodna × rate per ton = bill.</p>
+      <ol>
+        <li><strong>Month Hisaab</strong> kholo.</li>
+        <li><strong>Mahina</strong> + <strong>Saal</strong> choose karo.</li>
+        <li><strong>Company</strong> choose karo.</li>
+        <li><strong>Rate per ton</strong> check karo (Company Rates se aata hai; change kar sakte ho).</li>
+        <li>App dikhati hai: total kg + bill preview.</li>
+        <li><strong>Settle Month</strong> dabao.</li>
+        <li>Confirm dialog aayega — kg × rate = bill padh kar <strong>Haan, Settle</strong>.</li>
+      </ol>
+      <div class="ok">
+        Settle ke baad <strong>do</strong> cheezein hoti hain:
+        <br />• Company ke khate mein bill (udhaar / receivable)
+        <br />• Har related gaari ke Gari Khata mein <strong>Jama</strong> (us gaari ke kg ke hisaab se)
+      </div>
+      <div class="note">
+        Ek company + ek mahina = <strong>ek hi dafa</strong> settle. Dubara settle nahi hota.
+        <br />Us mahine ki weight entries <strong>Settled</strong> ho jati hain — edit/delete band.
+      </div>
+      <h3>Settle ke baad</h3>
+      <ul>
+        <li><strong>Print / PDF bill</strong> — company ko dena / record.</li>
+        <li><strong>Company payment likho</strong> — jab paisa aa jaye.</li>
+      </ul>
+    </section>
+
+    <section class="card" id="payment">
+      <h2><span class="step-num">7</span> Company se payment</h2>
+      <p>Jab company paisa de:</p>
+      <ol>
+        <li><strong>Customers</strong> → company pe tap → khata kholo,
+          <br /><em>ya</em> Bills / Month Hisaab / Gari Khata se <strong>Payment</strong> shortcut.</li>
+        <li>Payment receive / amount likho aur save.</li>
+      </ol>
+      <div class="tip">
+        Pehle Month Hisaab settle karo (bill lagna chahiye), phir payment — taake khata match rahe.
+      </div>
+    </section>
+
+    <section class="card" id="print">
+      <h2><span class="step-num">8</span> Print / PDF</h2>
+      <h3>Gari Khata print</h3>
+      <ol>
+        <li>Gaari ka khata kholo.</li>
+        <li>Upar <strong>printer</strong> icon dabao.</li>
+        <li>Print dialog / PDF save — Date, Tafseel, Kharcha, Jama, Total.</li>
+      </ol>
+      <h3>Month company bill print</h3>
+      <ol>
+        <li>Month Hisaab → settled mahina / company.</li>
+        <li><strong>Print / PDF bill</strong> dabao.</li>
+        <li>Rate, total kg, bill amount + har weight line print hoti hai.</li>
+      </ol>
+      <p>Ye guide page bhi print ho sakta hai (upar <strong>Print / PDF save</strong>).</p>
+    </section>
+
+    <section class="card" id="edit">
+      <h2><span class="step-num">9</span> Edit / Delete — rules</h2>
+      <table>
+        <thead>
+          <tr><th>Cheez</th><th>Edit</th><th>Delete</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Company Bill (Pending)</td>
+            <td>Tap → edit</td>
+            <td>Long press → delete</td>
+          </tr>
+          <tr>
+            <td>Company Bill (Settled)</td>
+            <td>❌ locked</td>
+            <td>❌ locked</td>
+          </tr>
+          <tr>
+            <td>Gari Khata — manual Kharcha / Jama</td>
+            <td>Tap → edit</td>
+            <td>Long press → delete</td>
+          </tr>
+          <tr>
+            <td>Gari Khata — Month Hisaab Jama</td>
+            <td>❌ locked</td>
+            <td>❌ locked</td>
+          </tr>
+          <tr>
+            <td>Opening baqaya</td>
+            <td>❌ (ek dafa)</td>
+            <td>—</td>
+          </tr>
+        </tbody>
+      </table>
+      <div class="note">
+        Delete se pehle confirm aata hai. Ghalat delete ho jaye to dubara sahi entry likh lo.
+      </div>
+    </section>
+
+    <section class="card" id="offline">
+      <h2><span class="step-num">10</span> Offline + sync</h2>
+      <ul>
+        <li>Internet na ho to upar <strong>peela banner</strong>: “Internet nahi — data phone pe save… online hone pe sync.”</li>
+        <li>Offline bhi bills / khata likh sakte ho — phone pe save rehta hai.</li>
+        <li>Online hone pe cloud pe backup / sync ho jata hai.</li>
+        <li><strong>Sync Status</strong> (More / sidebar) se pending sync dekh sakte ho.</li>
+      </ul>
+      <div class="ok">
+        App “kharab” nahi — aksar sirf offline hoti hai. Banner dekho, kaam jari rakho.
+      </div>
+    </section>
+
+    <section class="card" id="daily">
+      <h2>Roz ka short rule</h2>
+      <ol>
+        <li>Trip / load hua → <strong>Company Bills</strong> mein weight (kg) likho.</li>
+        <li>Kharcha hua (diesel, local, peshgi…) → us gaari ke <strong>Gari Khata</strong> mein <strong>Kharcha</strong>.</li>
+        <li>Mahina khatam → <strong>Month Hisaab</strong> → confirm → Settle.</li>
+        <li>Company ne paisa diya → <strong>Payment</strong> likho.</li>
+        <li>Zarurat ho to Print / PDF nikaal lo.</li>
+      </ol>
+    </section>
+
+    <section class="card" id="faq">
+      <h2>Masle / sawalat</h2>
+      <h3>Weight galat likh diya?</h3>
+      <p>Agar <strong>Pending</strong> hai → bill pe tap karke edit. Agar <strong>Settled</strong> hai → change nahi; office se check.</p>
+
+      <h3>“Pehle gaari / company add karein”?</h3>
+      <p>Pehle Gari Khata mein gaari, Customers mein company, phir bill.</p>
+
+      <h3>Month Settle reject / error?</h3>
+      <ul>
+        <li>Us mahine us company ke pending weight hone chahiye.</li>
+        <li>Rate per ton zero nahi hona chahiye.</li>
+        <li>Pehle se settle ho chuka ho to dubara nahi.</li>
+      </ul>
+
+      <h3>Gari pe Jama khud aa gaya?</h3>
+      <p>Haan — Month Settle ke baad. Woh entry lock hai (Excel ke month bill jaisa).</p>
+
+      <h3>Internet nahi / data gayab lag raha?</h3>
+      <p>Peela offline banner check karo. Login same account se karo. Sync Status dekho. Phir bhi masla ho to WhatsApp support.</p>
+
+      <h3>Kaunsa number pe madad?</h3>
+      <p>
+        WhatsApp: <strong><a href="https://wa.me/923312544969">0331 2544969</a></strong>
+        <br />App ke andar bhi green WhatsApp button hai.
+      </p>
+    </section>
+
+    <section class="card">
+      <h2>Office tip</h2>
+      <p>
+        Is page ko phone pe bookmark karo:
+        <a href="https://buyappsc.web.app/guide.html">https://buyappsc.web.app/guide.html</a>
+      </p>
+      <p>Print karke wall pe / folder mein rakh sakte ho — naya staff isi se seekhe.</p>
+    </section>
+  </main>
+
+  <footer>
+    Transport khata guide — staff ke liye · App https://buyappsc.web.app
+  </footer>
+</body>
+</html>

@@ -4,6 +4,8 @@ import 'package:uuid/uuid.dart';
 import '../../../core/accounting/approval_threshold_repository.dart';
 import '../../../core/accounting/journal_entry.dart';
 import '../../../core/accounting/ledger_repository.dart';
+import '../../../core/sync/sync_queue_item.dart';
+import '../../../core/sync/sync_queue_repository.dart';
 import '../../../core/system/audit_log_repository.dart';
 import '../../../core/system/number_sequence_service.dart';
 import '../inventory/product.dart';
@@ -33,7 +35,7 @@ class SaleLineInput {
 /// pattern as `fiscalPeriods` elsewhere: without one, every sale posts
 /// immediately, unchanged from Phase 1.
 class SaleRepository {
-  SaleRepository(this.db, this.ledger, this.products, this.numbering, [this.approvalThresholds, this.auditLog]);
+  SaleRepository(this.db, this.ledger, this.products, this.numbering, [this.approvalThresholds, this.auditLog, this.syncQueue]);
 
   final Database db;
   final LedgerRepository ledger;
@@ -41,6 +43,10 @@ class SaleRepository {
   final NumberSequenceService numbering;
   final ApprovalThresholdRepository? approvalThresholds;
   final AuditLogRepository? auditLog;
+
+  /// Optional, opt-in — see FirestoreSyncService.restoreFromCloud() for
+  /// why a Sale enqueues itself the same way Party/Product do.
+  final SyncQueueRepository? syncQueue;
 
   Future<Sale> create({
     required String businessId,
@@ -117,6 +123,15 @@ class SaleRepository {
       await txn.insert(Sale.tableName, sale.toMap());
       for (final line in lines) {
         await txn.insert(SaleLine.tableName, line.toMap());
+      }
+      if (syncQueue != null) {
+        await syncQueue!.enqueue(
+          txn,
+          businessId: businessId,
+          entityType: 'Sale',
+          entityId: sale.uuid,
+          operation: SyncOperation.create,
+        );
       }
 
       if (!requiresApproval) {
@@ -335,7 +350,54 @@ class SaleRepository {
       whereArgs: [businessId],
       orderBy: 'date DESC',
     );
-    return rows.map(Sale.fromMap).toList();
+    return _attachLines(rows);
+  }
+
+  /// Same as [list], restricted to sales dated within [from]/[to]
+  /// (inclusive, either or both may be omitted) — for the Daily/Month-End
+  /// reports, same date-range shape as LedgerRepository.trialBalanceForRange.
+  Future<List<Sale>> listForDateRange({
+    required String businessId,
+    DateTime? from,
+    DateTime? to,
+  }) async {
+    final conditions = ['business_id = ?'];
+    final args = <Object?>[businessId];
+    if (from != null) {
+      conditions.add('date >= ?');
+      args.add(from.toIso8601String());
+    }
+    if (to != null) {
+      conditions.add('date <= ?');
+      args.add(to.toIso8601String());
+    }
+
+    final rows = await db.query(
+      Sale.tableName,
+      where: conditions.join(' AND '),
+      whereArgs: args,
+      orderBy: 'date DESC',
+    );
+    return _attachLines(rows);
+  }
+
+  /// Batch-loads every line for a page of sale rows in one query rather
+  /// than one query per sale — [findByUuid] does the single-sale version
+  /// of this inline since it's only ever one row there.
+  Future<List<Sale>> _attachLines(List<Map<String, Object?>> saleRows) async {
+    if (saleRows.isEmpty) return [];
+    final saleUuids = saleRows.map((r) => r['uuid'] as String).toList();
+    final lineRows = await db.query(
+      SaleLine.tableName,
+      where: 'sale_uuid IN (${saleUuids.map((_) => '?').join(', ')})',
+      whereArgs: saleUuids,
+    );
+    final linesBySale = <String, List<SaleLine>>{};
+    for (final row in lineRows) {
+      final line = SaleLine.fromMap(row);
+      linesBySale.putIfAbsent(line.saleUuid, () => []).add(line);
+    }
+    return saleRows.map((r) => Sale.fromMap(r, lines: linesBySale[r['uuid']] ?? const [])).toList();
   }
 
   Future<List<Sale>> pendingApproval({required String businessId}) async {

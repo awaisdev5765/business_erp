@@ -1,6 +1,8 @@
 import 'package:sqflite/sqflite.dart';
 import 'package:uuid/uuid.dart';
 
+import '../../../core/sync/sync_queue_item.dart';
+import '../../../core/sync/sync_queue_repository.dart';
 import 'category.dart';
 
 const _uuid = Uuid();
@@ -9,13 +11,23 @@ const _uuid = Uuid();
 /// since Phase 1 (Product.brandUuid) alongside Category, but only
 /// Category ever got a repository or UI. Same gap, same fix.
 class BrandRepository {
-  BrandRepository(this.db);
+  BrandRepository(this.db, [this.syncQueue]);
 
   final Database db;
+  final SyncQueueRepository? syncQueue;
 
   Future<Brand> create({required String businessId, required String name}) async {
     final brand = Brand(uuid: _uuid.v4(), businessId: businessId, name: name);
     await db.insert(Brand.tableName, brand.toMap());
+    if (syncQueue != null) {
+      await syncQueue!.enqueue(
+        db,
+        businessId: businessId,
+        entityType: 'Brand',
+        entityId: brand.uuid,
+        operation: SyncOperation.create,
+      );
+    }
     return brand;
   }
 

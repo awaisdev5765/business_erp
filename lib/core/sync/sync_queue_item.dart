@@ -1,4 +1,4 @@
-enum SyncOperation { create, update }
+enum SyncOperation { create, update, delete }
 
 enum SyncQueueStatus { pending, syncing, synced, failed, conflict }
 

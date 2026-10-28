@@ -3,17 +3,20 @@ import 'package:uuid/uuid.dart';
 
 import '../accounting/journal_entry.dart';
 import '../accounting/ledger_repository.dart';
+import '../sync/sync_queue_item.dart';
+import '../sync/sync_queue_repository.dart';
 import '../system/number_sequence_service.dart';
 import 'payment.dart';
 
 const _uuid = Uuid();
 
 class PaymentRepository {
-  PaymentRepository(this.db, this.ledger, this.numbering);
+  PaymentRepository(this.db, this.ledger, this.numbering, [this.syncQueue]);
 
   final Database db;
   final LedgerRepository ledger;
   final NumberSequenceService numbering;
+  final SyncQueueRepository? syncQueue;
 
   Future<Payment> record({
     required String businessId,
@@ -52,6 +55,15 @@ class PaymentRepository {
 
     await db.transaction((txn) async {
       await txn.insert(Payment.tableName, payment.toMap());
+      if (syncQueue != null) {
+        await syncQueue!.enqueue(
+          txn,
+          businessId: businessId,
+          entityType: 'Payment',
+          entityId: uuid,
+          operation: SyncOperation.create,
+        );
+      }
 
       final isReceipt = direction == PaymentDirection.receiveFromCustomer;
       await ledger.postWithin(

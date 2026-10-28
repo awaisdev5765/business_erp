@@ -60,7 +60,7 @@ class _ContractsScreenState extends ConsumerState<ContractsScreen> {
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
-          title: const Text('New Contract'),
+          title: const Text('Company Rate'),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -71,12 +71,15 @@ class _ContractsScreenState extends ConsumerState<ContractsScreen> {
                 onChanged: (v) => setDialogState(() => selectedCustomer = v ?? customers.first),
               ),
               const SizedBox(height: AppSpacing.md),
-              TextField(controller: descController, decoration: const InputDecoration(labelText: 'Description')),
+              TextField(
+                controller: descController,
+                decoration: const InputDecoration(labelText: 'Note (optional)'),
+              ),
               const SizedBox(height: AppSpacing.md),
               TextField(
                 controller: rateController,
-                decoration: const InputDecoration(labelText: 'Rate per trip (optional)'),
-                keyboardType: TextInputType.number,
+                decoration: const InputDecoration(labelText: 'Rate per ton'),
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
               ),
             ],
           ),
@@ -88,14 +91,14 @@ class _ContractsScreenState extends ConsumerState<ContractsScreen> {
       ),
     );
 
-    if (saved != true || descController.text.isEmpty) return;
+    if (saved != true) return;
 
     final repo = await ref.read(contractRepositoryProvider.future);
     await repo.create(
       businessId: businessId,
       customerUuid: selectedCustomer.uuid,
-      description: descController.text,
-      ratePerTripMinorUnits: rateController.text.isEmpty ? null : ((double.tryParse(rateController.text) ?? 0) * 100).round(),
+      description: descController.text.trim().isEmpty ? selectedCustomer.name : descController.text.trim(),
+      ratePerTonMinorUnits: rateController.text.isEmpty ? null : ((double.tryParse(rateController.text) ?? 0) * 100).round(),
     );
     await _load();
   }
@@ -104,7 +107,7 @@ class _ContractsScreenState extends ConsumerState<ContractsScreen> {
   Widget build(BuildContext context) {
     final contracts = _contracts;
     return Scaffold(
-      appBar: AppBar(title: const Text('Contracts')),
+      appBar: AppBar(title: const Text('Company Rates')),
       floatingActionButton: FloatingActionButton(onPressed: _showAddDialog, child: const Icon(Icons.add)),
       body: contracts == null
           ? const Center(child: CircularProgressIndicator())
@@ -115,7 +118,7 @@ class _ContractsScreenState extends ConsumerState<ContractsScreen> {
                     children: [
                       Icon(Icons.description_outlined, size: 40, color: Colors.grey.shade400),
                       const SizedBox(height: AppSpacing.md),
-                      const Text('No contracts yet — tap + to add one.'),
+                      const Text('No company rates yet — tap + (company + Rs per ton).'),
                     ],
                   ),
                 )
@@ -134,11 +137,13 @@ class _ContractsScreenState extends ConsumerState<ContractsScreen> {
                           decoration: BoxDecoration(color: AppColors.accent.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(8)),
                           child: const Icon(Icons.description_outlined, color: AppColors.accent, size: 18),
                         ),
-                        title: Text(contract.description),
-                        subtitle: Text(_customersByUuid[contract.customerUuid]?.name ?? contract.customerUuid),
-                        trailing: contract.ratePerTripMinorUnits != null
-                            ? Text(_money(contract.ratePerTripMinorUnits!), style: const TextStyle(fontWeight: FontWeight.w700))
-                            : null,
+                        title: Text(_customersByUuid[contract.customerUuid]?.name ?? contract.customerUuid),
+                        subtitle: Text(contract.description),
+                        trailing: contract.ratePerTonMinorUnits != null
+                            ? Text('${_money(contract.ratePerTonMinorUnits!)} / ton', style: const TextStyle(fontWeight: FontWeight.w700))
+                            : contract.ratePerTripMinorUnits != null
+                                ? Text(_money(contract.ratePerTripMinorUnits!), style: const TextStyle(fontWeight: FontWeight.w700))
+                                : null,
                       ),
                     );
                   },

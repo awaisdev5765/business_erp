@@ -1,14 +1,17 @@
 import 'package:sqflite/sqflite.dart';
 import 'package:uuid/uuid.dart';
 
+import '../sync/sync_queue_item.dart';
+import '../sync/sync_queue_repository.dart';
 import 'fiscal_period.dart';
 
 const _uuid = Uuid();
 
 class FiscalPeriodRepository {
-  FiscalPeriodRepository(this.db);
+  FiscalPeriodRepository(this.db, [this.syncQueue]);
 
   final Database db;
+  final SyncQueueRepository? syncQueue;
 
   Future<FiscalPeriod> create({
     required String businessId,
@@ -23,6 +26,15 @@ class FiscalPeriodRepository {
       status: FiscalPeriodStatus.open,
     );
     await db.insert(FiscalPeriod.tableName, period.toMap());
+    if (syncQueue != null) {
+      await syncQueue!.enqueue(
+        db,
+        businessId: businessId,
+        entityType: 'FiscalPeriod',
+        entityId: period.uuid,
+        operation: SyncOperation.create,
+      );
+    }
     return period;
   }
 

@@ -1,14 +1,17 @@
 import 'package:sqflite/sqflite.dart';
 import 'package:uuid/uuid.dart';
 
+import '../sync/sync_queue_item.dart';
+import '../sync/sync_queue_repository.dart';
 import 'bank_account.dart';
 
 const _uuid = Uuid();
 
 class BankAccountRepository {
-  BankAccountRepository(this.db);
+  BankAccountRepository(this.db, [this.syncQueue]);
 
   final Database db;
+  final SyncQueueRepository? syncQueue;
 
   Future<BankAccount> create({
     required String businessId,
@@ -26,6 +29,15 @@ class BankAccountRepository {
       openingBalanceMinorUnits: openingBalanceMinorUnits,
     );
     await db.insert(BankAccount.tableName, account.toMap());
+    if (syncQueue != null) {
+      await syncQueue!.enqueue(
+        db,
+        businessId: businessId,
+        entityType: 'BankAccount',
+        entityId: account.uuid,
+        operation: SyncOperation.create,
+      );
+    }
     return account;
   }
 
@@ -53,6 +65,22 @@ class BankAccountRepository {
       amountMinorUnits: amountMinorUnits,
     );
     await db.insert(BankStatementLine.tableName, line.toMap());
+    if (syncQueue != null) {
+      // BankStatementLine has no business_id column of its own (it only
+      // references bankAccountUuid) — look up the owning account's
+      // business so the sync queue item, which every other entity keys
+      // by businessId, can still be scoped/filtered the same way.
+      final accountRows = await db.query(BankAccount.tableName, where: 'uuid = ?', whereArgs: [bankAccountUuid], limit: 1);
+      if (accountRows.isNotEmpty) {
+        await syncQueue!.enqueue(
+          db,
+          businessId: accountRows.first['business_id'] as String,
+          entityType: 'BankStatementLine',
+          entityId: line.uuid,
+          operation: SyncOperation.create,
+        );
+      }
+    }
     return line;
   }
 

@@ -1,14 +1,17 @@
 import 'package:sqflite/sqflite.dart';
 import 'package:uuid/uuid.dart';
 
+import '../sync/sync_queue_item.dart';
+import '../sync/sync_queue_repository.dart';
 import 'fixed_asset.dart';
 
 const _uuid = Uuid();
 
 class FixedAssetRepository {
-  FixedAssetRepository(this.db);
+  FixedAssetRepository(this.db, [this.syncQueue]);
 
   final Database db;
+  final SyncQueueRepository? syncQueue;
 
   Future<FixedAsset> create({
     required String businessId,
@@ -30,6 +33,15 @@ class FixedAssetRepository {
       salvageValueMinorUnits: salvageValueMinorUnits,
     );
     await db.insert(FixedAsset.tableName, asset.toMap());
+    if (syncQueue != null) {
+      await syncQueue!.enqueue(
+        db,
+        businessId: businessId,
+        entityType: 'FixedAsset',
+        entityId: asset.uuid,
+        operation: SyncOperation.create,
+      );
+    }
     return asset;
   }
 

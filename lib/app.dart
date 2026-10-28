@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
@@ -21,6 +22,7 @@ import 'features/accounting/cash_book_screen.dart';
 import 'features/accounting/expenses_screen.dart';
 import 'features/accounting/fixed_assets_screen.dart';
 import 'features/accounting/profit_and_loss_screen.dart';
+import 'features/accounting/sales_report_screen.dart';
 import 'features/accounting/trial_balance_screen.dart';
 import 'features/activity/assets_screen.dart';
 import 'features/activity/crew_screen.dart';
@@ -30,14 +32,19 @@ import 'features/payroll/payroll_screen.dart';
 import 'features/spare_parts/inventory/product_list_screen.dart';
 import 'features/spare_parts/purchases/purchase_entry_screen.dart';
 import 'features/spare_parts/sales/sale_entry_screen.dart';
+import 'features/spare_parts/sales/sales_history_screen.dart';
 import 'features/identity/staff_management_screen.dart';
 import 'features/sync/sync_status_screen.dart';
 import 'features/tenant/business_switcher_screen.dart';
 import 'features/tenant/cross_business_dashboard_screen.dart';
 import 'features/transport/contracts_screen.dart';
+import 'features/transport/daily_entry_screen.dart';
 import 'features/transport/driver_performance_screen.dart';
+import 'features/transport/month_hisaab_screen.dart';
 import 'package:business_erp/shared/theme/app_theme.dart';
 import 'shared/widgets/app_sidebar.dart';
+import 'shared/widgets/offline_banner.dart';
+import 'shared/widgets/whatsapp_support.dart';
 
 class BusinessErpApp extends StatelessWidget {
   const BusinessErpApp({super.key});
@@ -122,6 +129,8 @@ class _AppShellState extends ConsumerState<AppShell>
   int _selectedIndex = 0;
   Timer? _syncTimer;
   StreamSubscription<RemoteMessage>? _fcmSubscription;
+  StreamSubscription<List<ConnectivityResult>>? _connectivitySubscription;
+  bool _wasOffline = false;
 
   @override
   void initState() {
@@ -131,10 +140,24 @@ class _AppShellState extends ConsumerState<AppShell>
     // Periodic background sync while the app is open — see
     // FirestoreSyncService.syncAll. 3 minutes balances "reasonably
     // fresh" against not hammering Firestore reads on the free plan.
+    // Network-restore (below) is what makes sync feel immediate; this
+    // timer is just the fallback for "online the whole time, no
+    // connectivity transition ever fired."
     _syncTimer = Timer.periodic(
       const Duration(minutes: 3),
       (_) => _backgroundSync(),
     );
+
+    // Sync the moment connectivity comes back, instead of leaving
+    // anything queued offline waiting for the next 3-minute tick or a
+    // manual tap on the Sync Status screen's "Sync Now" button — that
+    // button stays for "I want to check right now," not as the only way
+    // a reconnect ever gets noticed.
+    _connectivitySubscription = Connectivity().onConnectivityChanged.listen((results) {
+      final isOffline = results.every((r) => r == ConnectivityResult.none);
+      if (_wasOffline && !isOffline) _backgroundSync();
+      _wasOffline = isOffline;
+    });
 
     // Foreground messages don't show a system notification automatically
     // (only background/terminated does) — show an in-app SnackBar
@@ -155,6 +178,7 @@ class _AppShellState extends ConsumerState<AppShell>
   void dispose() {
     _syncTimer?.cancel();
     _fcmSubscription?.cancel();
+    _connectivitySubscription?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
@@ -194,6 +218,13 @@ class _AppShellState extends ConsumerState<AppShell>
       section: 'Spare Parts',
       visibleFor: const {BusinessType.sparePartsShop},
       builder: () => const SaleEntryScreen(),
+    ),
+    _Destination(
+      icon: Icons.receipt_long_outlined,
+      label: 'Sales History',
+      section: 'Spare Parts',
+      visibleFor: const {BusinessType.sparePartsShop},
+      builder: () => const SalesHistoryScreen(),
     ),
     _Destination(
       icon: Icons.shopping_cart_outlined,
@@ -239,7 +270,7 @@ class _AppShellState extends ConsumerState<AppShell>
     ),
     _Destination(
       icon: Icons.local_shipping_outlined,
-      label: 'Vehicles',
+      label: 'Gari Khata',
       section: 'Transport',
       visibleFor: const {BusinessType.transport},
       builder: () => const AssetsScreen(assetType: OperatingAssetType.vehicle),
@@ -261,18 +292,25 @@ class _AppShellState extends ConsumerState<AppShell>
       ),
     ),
     _Destination(
+      icon: Icons.scale_outlined,
+      label: 'Company Bills',
+      section: 'Transport',
+      visibleFor: const {BusinessType.transport},
+      builder: () => const DailyEntryScreen(),
+    ),
+    _Destination(
+      icon: Icons.calculate_outlined,
+      label: 'Month Hisaab',
+      section: 'Transport',
+      visibleFor: const {BusinessType.transport},
+      builder: () => const MonthHisaabScreen(),
+    ),
+    _Destination(
       icon: Icons.description_outlined,
-      label: 'Contracts',
+      label: 'Company Rates',
       section: 'Transport',
       visibleFor: const {BusinessType.transport},
       builder: () => const ContractsScreen(),
-    ),
-    _Destination(
-      icon: Icons.alt_route_outlined,
-      label: 'Haul Trips',
-      section: 'Transport',
-      visibleFor: const {BusinessType.transport},
-      builder: () => const TripsScreen(tripType: TripType.transport),
     ),
 
     // --- Parties ---
@@ -307,6 +345,20 @@ class _AppShellState extends ConsumerState<AppShell>
       label: 'P&L',
       section: 'Accounting',
       builder: () => const ProfitAndLossScreen(),
+    ),
+    _Destination(
+      icon: Icons.today_outlined,
+      label: 'Daily Report',
+      section: 'Accounting',
+      visibleFor: const {BusinessType.sparePartsShop},
+      builder: () => const SalesReportScreen(period: SalesReportPeriod.daily),
+    ),
+    _Destination(
+      icon: Icons.event_note_outlined,
+      label: 'Month-End Report',
+      section: 'Accounting',
+      visibleFor: const {BusinessType.sparePartsShop},
+      builder: () => const SalesReportScreen(period: SalesReportPeriod.monthly),
     ),
     _Destination(
       icon: Icons.history_outlined,
@@ -505,6 +557,14 @@ class _AppShellState extends ConsumerState<AppShell>
     try {
       final wipeService = await ref.read(dataWipeServiceProvider.future);
       await wipeService.wipeEverything();
+      ref.read(selectedBusinessIdProvider.notifier).state = null;
+      resetCloudRestoreAttempt();
+      ref.invalidate(databaseProvider);
+      ref.invalidate(dataWipeServiceProvider);
+      ref.invalidate(firestoreSyncServiceProvider);
+      ref.invalidate(currentBusinessIdProvider);
+      ref.invalidate(currentBusinessProvider);
+      ref.invalidate(accessibleBusinessesProvider);
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Wipe failed: $e')));
@@ -630,18 +690,21 @@ class _AppShellState extends ConsumerState<AppShell>
     return _buildShell(context, activeBusiness, userProfile, isSuperAdmin);
   }
 
+  /// Primary bottom-nav tabs on phone — rest go under "More".
+  /// Labels must match [_allDestinations] labels exactly.
+  static const _mobilePrimaryByType = <BusinessType, List<String>>{
+    BusinessType.transport: ['Gari Khata', 'Company Bills', 'Month Hisaab', 'Customers'],
+    BusinessType.fishery: ['Boats', 'Fishing Trips', 'Customers', 'Cash Book'],
+    BusinessType.sparePartsShop: ['Products', 'New Sale', 'Sales History', 'Customers'],
+  };
+
   Widget _buildShell(BuildContext context, Business business, UserProfile? userProfile, bool isSuperAdmin) {
     final role = userProfile?.businessAccess[business.uuid];
     final destinations = _allDestinations
         .where((d) => d.appliesTo(business.type))
         .where((d) => _sectionVisibleForRole(d.section, role, isSuperAdmin))
         .toList();
-    // The previously-selected index can point past the end (or at a
-    // now-hidden screen) right after switching to a business of a
-    // different type — fall back to Dashboard rather than crash.
-    final selectedIndex = _selectedIndex < destinations.length
-        ? _selectedIndex
-        : 0;
+    final selectedIndex = _selectedIndex < destinations.length ? _selectedIndex : 0;
 
     final groups = <AppSidebarGroup>[];
     String? currentSection;
@@ -670,10 +733,46 @@ class _AppShellState extends ConsumerState<AppShell>
     }
     flush();
 
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final mobile = constraints.maxWidth < 800;
+        if (mobile) {
+          return _buildMobileShell(
+            context: context,
+            business: business,
+            destinations: destinations,
+            selectedIndex: selectedIndex,
+            isSuperAdmin: isSuperAdmin,
+          );
+        }
+        return _buildDesktopShell(
+          context: context,
+          business: business,
+          destinations: destinations,
+          selectedIndex: selectedIndex,
+          groups: groups,
+          isSuperAdmin: isSuperAdmin,
+        );
+      },
+    );
+  }
+
+  Widget _buildDesktopShell({
+    required BuildContext context,
+    required Business business,
+    required List<_Destination> destinations,
+    required int selectedIndex,
+    required List<AppSidebarGroup> groups,
+    required bool isSuperAdmin,
+  }) {
     return Scaffold(
-      body: Row(
+      body: Column(
         children: [
-          AppSidebar(
+          const OfflineBanner(),
+          Expanded(
+            child: Row(
+              children: [
+                AppSidebar(
             header: Padding(
               padding: const EdgeInsets.fromLTRB(
                 AppSpacing.lg,
@@ -690,22 +789,16 @@ class _AppShellState extends ConsumerState<AppShell>
                       color: AppColors.primary,
                       borderRadius: BorderRadius.circular(8),
                     ),
-                    child: const Icon(
-                      Icons.business,
-                      color: Colors.white,
-                      size: 20,
-                    ),
+                    child: const Icon(Icons.business, color: Colors.white, size: 20),
                   ),
                   const SizedBox(width: AppSpacing.md),
                   const Expanded(
                     child: Text(
                       'Business ERP',
-                      style: TextStyle(
-                        fontWeight: FontWeight.w700,
-                        fontSize: 15,
-                      ),
+                      style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
                     ),
                   ),
+                  const WhatsAppSupportButton(compact: true),
                   _NotificationBell(
                     onNavigate: (label) {
                       final index = destinations.indexWhere((d) => d.label == label);
@@ -733,11 +826,7 @@ class _AppShellState extends ConsumerState<AppShell>
                 padding: const EdgeInsets.all(AppSpacing.md),
                 child: Row(
                   children: [
-                    Icon(
-                      _typeIcons[business.type],
-                      size: 18,
-                      color: Colors.grey.shade600,
-                    ),
+                    Icon(_typeIcons[business.type], size: 18, color: Colors.grey.shade600),
                     const SizedBox(width: AppSpacing.md),
                     Expanded(
                       child: Column(
@@ -746,36 +835,190 @@ class _AppShellState extends ConsumerState<AppShell>
                         children: [
                           Text(
                             business.name,
-                            style: const TextStyle(
-                              fontWeight: FontWeight.w600,
-                              fontSize: 13,
-                            ),
+                            style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
                             overflow: TextOverflow.ellipsis,
                           ),
                           Text(
                             _typeLabels[business.type] ?? '',
-                            style: TextStyle(
-                              fontSize: 11,
-                              color: Colors.grey.shade600,
-                            ),
+                            style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
                             overflow: TextOverflow.ellipsis,
                           ),
                         ],
                       ),
                     ),
-                    Icon(
-                      Icons.unfold_more,
-                      size: 16,
-                      color: Colors.grey.shade400,
-                    ),
+                    Icon(Icons.unfold_more, size: 16, color: Colors.grey.shade400),
                   ],
                 ),
               ),
             ),
           ),
           Expanded(child: destinations[selectedIndex].builder()),
+              ],
+            ),
+          ),
         ],
       ),
+    );
+  }
+
+  Widget _buildMobileShell({
+    required BuildContext context,
+    required Business business,
+    required List<_Destination> destinations,
+    required int selectedIndex,
+    required bool isSuperAdmin,
+  }) {
+    final primaryLabels = _mobilePrimaryByType[business.type] ?? const ['Dashboard'];
+    final primaryIndexes = <int>[];
+    for (final label in primaryLabels) {
+      final i = destinations.indexWhere((d) => d.label == label);
+      if (i != -1) primaryIndexes.add(i);
+    }
+    // Always keep Dashboard reachable if present and not already listed.
+    final dash = destinations.indexWhere((d) => d.label == 'Dashboard');
+    if (dash != -1 && !primaryIndexes.contains(dash) && primaryIndexes.length < 4) {
+      primaryIndexes.insert(0, dash);
+    }
+
+    final onPrimaryTab = primaryIndexes.contains(selectedIndex);
+    final bottomSelected = onPrimaryTab ? primaryIndexes.indexOf(selectedIndex) : primaryIndexes.length;
+
+    return Scaffold(
+      body: Column(
+        children: [
+          const OfflineBanner(),
+          const WhatsAppSupportBar(),
+          Expanded(child: destinations[selectedIndex].builder()),
+        ],
+      ),
+      bottomNavigationBar: NavigationBar(
+        selectedIndex: bottomSelected.clamp(0, primaryIndexes.length),
+        onDestinationSelected: (i) {
+          if (i < primaryIndexes.length) {
+            setState(() => _selectedIndex = primaryIndexes[i]);
+          } else {
+            _showMobileMoreSheet(
+              context: context,
+              business: business,
+              destinations: destinations,
+              selectedIndex: selectedIndex,
+              isSuperAdmin: isSuperAdmin,
+            );
+          }
+        },
+        destinations: [
+          for (final i in primaryIndexes)
+            NavigationDestination(
+              icon: Icon(destinations[i].icon),
+              selectedIcon: Icon(destinations[i].icon),
+              label: _shortMobileLabel(destinations[i].label),
+            ),
+          const NavigationDestination(
+            icon: Icon(Icons.menu),
+            selectedIcon: Icon(Icons.menu),
+            label: 'More',
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _shortMobileLabel(String label) {
+    switch (label) {
+      case 'Company Bills':
+        return 'Bills';
+      case 'Month Hisaab':
+        return 'Hisaab';
+      case 'Gari Khata':
+        return 'Khata';
+      case 'Sales History':
+        return 'Sales';
+      case 'Fishing Trips':
+        return 'Trips';
+      case 'Cash Book':
+        return 'Cash';
+      default:
+        return label;
+    }
+  }
+
+  Future<void> _showMobileMoreSheet({
+    required BuildContext context,
+    required Business business,
+    required List<_Destination> destinations,
+    required int selectedIndex,
+    required bool isSuperAdmin,
+  }) async {
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (context) {
+        return SafeArea(
+          child: SizedBox(
+            height: MediaQuery.of(context).size.height * 0.75,
+            child: ListView(
+              children: [
+                ListTile(
+                  leading: Icon(_typeIcons[business.type]),
+                  title: Text(business.name, style: const TextStyle(fontWeight: FontWeight.w700)),
+                  subtitle: Text(_typeLabels[business.type] ?? ''),
+                  trailing: const Icon(Icons.swap_horiz),
+                  onTap: () {
+                    Navigator.pop(context);
+                    _showBusinessMenu(context);
+                  },
+                ),
+                const Divider(),
+                for (var i = 0; i < destinations.length; i++) ...[
+                  if (i == 0 || destinations[i].section != destinations[i - 1].section)
+                    if (destinations[i].section != null)
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(AppSpacing.lg, AppSpacing.md, AppSpacing.lg, AppSpacing.xs),
+                        child: Text(
+                          destinations[i].section!.toUpperCase(),
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: 0.6,
+                            color: Colors.grey.shade600,
+                          ),
+                        ),
+                      ),
+                  ListTile(
+                    leading: Icon(destinations[i].icon),
+                    title: Text(destinations[i].label),
+                    selected: i == selectedIndex,
+                    onTap: () {
+                      setState(() => _selectedIndex = i);
+                      Navigator.pop(context);
+                    },
+                  ),
+                ],
+                const Divider(),
+                ListTile(
+                  leading: const Icon(Icons.chat, color: Color(0xFF25D366)),
+                  title: const Text('WhatsApp Support'),
+                  subtitle: const Text(kSupportWhatsAppDisplay),
+                  onTap: () {
+                    Navigator.pop(context);
+                    openSupportWhatsApp();
+                  },
+                ),
+                if (isSuperAdmin)
+                  ListTile(
+                    leading: const Icon(Icons.delete_forever_outlined, color: AppColors.destructive),
+                    title: const Text('Wipe All Data', style: TextStyle(color: AppColors.destructive)),
+                    onTap: () {
+                      Navigator.pop(context);
+                      _showWipeDataDialog();
+                    },
+                  ),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 }
